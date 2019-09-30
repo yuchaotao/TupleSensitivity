@@ -1,0 +1,14 @@
+c This is a full instance for TPC-H
+c 1 REGIONKEY
+c 2 NATIONKEY
+c 3 SUPPKEY
+c 4 PARTKEY
+c 5 CUSTKEY
+c 6 ORDERKEY
+p tw 6 6
+1 2
+2 3
+3 4
+3 4 6
+5 6
+2 5

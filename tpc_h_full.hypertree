@@ -1,0 +1,14 @@
+NODE 1: [ 2, 3, 6 ]
+  COVERING EDGES: 
+    HYPEREDGE 2: [ 2, 3 ]
+    HYPEREDGE 4: [ 3, 4, 6 ]
+  NODE 2: [ 2, 5, 6 ]
+    COVERING EDGES: 
+      HYPEREDGE 1: [ 1, 2 ]
+      HYPEREDGE 5: [ 5, 6 ]
+    NODE 4: [ 1, 2 ]
+      COVERING EDGES: 
+        HYPEREDGE 1: [ 1, 2 ]
+  NODE 3: [ 3, 4, 6 ]
+    COVERING EDGES: 
+      HYPEREDGE 4: [ 3, 4, 6 ]
