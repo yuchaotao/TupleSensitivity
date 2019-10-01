@@ -20,6 +20,9 @@ class Node:
         self.topjoin = None
         self.attributes = union_attributes(relations)
 
+    def get_cohorts(self, relation):
+        return [rel for rel in self.relations if rel != relation]
+
     def isRoot(self):
         return self.parent is None
 
@@ -29,6 +32,16 @@ class Node:
 class Tree:
     def __init__(self, nodes: List[Node]):
         self.nodes = nodes
+        self.node_map = {}
+        self.demap_nodes(nodes)
+
+    def demap_nodes(self, nodes):
+        for node in nodes:
+            self.demap_node(node)
+
+    def demap_node(self, node):
+        for relation in node.relations:
+            self.node_map[relation] = node
 
 def union_attributes(relation_list: List[Relation]):
     attribute_set = set(relation_list[0].attributes)
@@ -68,11 +81,6 @@ def gen_sqlstr_joins(node_names):
     sql = gen_sqlstr_padding(sql)
     return sql
 
-def get_botjoin_tablename(node):
-    return "BOTJOIN_" + node.name
-
-def get_topjoin_tablename(node):
-    return "TOPJOIN_" + node.name
 
 def prepare_node(node: Node):
     name = node.name
@@ -164,13 +172,104 @@ def prepare_topjoin(hypertree: Tree):
     for node in hypertree.nodes:
         _prepare_topjoin(node)
 
+def _prepare_freqtable(node: Node):
+    name    =   get_nodefreq_tablename(node)
+    parent  =   node.parent
+    children    =   node.children
+
+    if node.isRoot():
+        join_relations  =   [get_botjoin_tablename(child) for child in children]
+
+        attrs   =   gen_sqlstr_attributes(node.attributes)
+        childmulti  =   gen_sqlstr_childmutli(node)
+        joins   =   gen_sqlstr_joins(join_relations)
+
+        sql = "SELECT {attrs}, {childmulti} AS c FROM {joins} GROUP BY {attrs}"
+        sql = sql.format(attrs=attrs, childmulti=childmulti, joins=joins)
+        create_table(sql, name)
+    elif node.isLeaf():
+        join_relations  =   [get_topjoin_tablename(node)]
+
+        attrs   =   gen_sqlstr_attributes(node.attributes)
+        joins   =   gen_sqlstr_joins(join_relations)
+
+        sql = "SELECT {attrs}, C_{i}_{pi} AS c FROM {joins} GROUP BY {attrs}"
+        sql = sql.format(attrs=attrs, i=node.index, pi=parent.index, joins=joins)
+        create_table(sql, name)
+    else:
+        join_relations  =   [get_topjoin_tablename(node)] + [get_botjoin_tablename(child) for child in children]
+
+        attrs   =   gen_sqlstr_attributes(node.attributes)
+        childmulti  =   gen_sqlstr_childmutli(node)
+        joins   =   gen_sqlstr_joins(join_relations)
+
+        sql = "SELECT {attrs}, C_{i}_{pi} * {childmulti} AS c FROM {joins} GROUP BY {attrs}"
+        sql = sql.format(attrs=attrs, i=node.index, pi=parent.index, childmulti=childmulti, joins=joins)
+        create_table(sql, name)
+
+def prepare_freqtable(hypertree: Tree):
+    for node in hypertree.nodes:
+        _prepare_freqtable(node)
+
+def _prepare_tuplesens(reln: Relation, node: Node):
+    name = get_relnsens_tablename(reln)
+
+    attrs   =   gen_sqlstr_attributes(reln.attributes)
+
+    subquery = "(SELECT {attrs}, SUM(c) AS c FROM {nodefreq} GROUP BY {attrs}) AS {new_name}"
+    subquery = subquery.format(attrs=attrs, nodefreq=get_nodefreq_tablename(node), new_name=get_grouped_nodefreq_tablename(node, reln))
+
+    join_relations  =   [subquery] + [cohort.name for cohort in node.get_cohorts(reln)]
+
+    joins   =   gen_sqlstr_joins(join_relations)
+
+    sql = "SELECT {attrs}, SUM(c) AS tsens FROM {joins}"
+    sql = sql.format(attrs=attrs, joins=joins)
+    create_table(sql, name)
+
+
+def prepare_tuplesens(hypertree: Tree):
+    for reln, node in hypertree.node_map.items():
+        _prepare_tuplesens(reln, node)
+
+def _select_most_sensitive_tuple(reln: Relation):
+    name = get_relnsens_tablename(reln)
+    sql = "SELECT * FROM {relnsens} ORDER BY tsens DESC LIMIT 1";
+    cur = run_sql(sql)
+    res = cur.fetchone()
+    return res
+
+
+def select_most_sensitive_tuple(hypertree: Tree):
+    for reln,    _ in hypertree.node_map.items():
+        res = _select_most_sensitive_tuple(reln)
+        print(res)
+
 def create_table(sql, name):
     sml = "CREATE TABLE IF NOT EXISTS {name} AS ({sql})"
     sml = sml.format(sql=sql, name=name)
     run_sql(sml)
+    print(name)
+    print('    ' + sql)
+    print()
 
 def run_sql(sql):
-    print(sql)
+    pass
+
+def get_botjoin_tablename(node):
+    return "BOTJOIN_" + node.name
+
+def get_topjoin_tablename(node):
+    return "TOPJOIN_" + node.name
+
+def get_nodefreq_tablename(node):
+    return "NODEFREQ_" + node.name
+
+def get_relnsens_tablename(reln):
+    return "RELNSENS_" + reln.name
+
+def get_grouped_nodefreq_tablename(node, reln):
+    return "GROUPED_NODEFREQ_" + node.name + "_" +reln.name
 
 def test():
     R1 = Relation(1, 'R1', ['A', 'B'])
@@ -199,6 +298,9 @@ def test():
     prepare_tree(T)
     prepare_botjoin(T)
     prepare_topjoin(T)
+    prepare_freqtable(T)
+    prepare_tuplesens(T)
+    #select_most_sensitive_tuple(T)
 
 if __name__ == '__main__':
     test()
