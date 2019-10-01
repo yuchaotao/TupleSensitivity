@@ -1,0 +1,33 @@
+p R1 A B
+d a1 b1
+d a1 b2
+d a2 b2
+c
+p R2 B C
+d b1 c2
+d b2 c1
+d b2 c2
+d b2 c3
+c
+p R3 C D
+d c1 d3
+d c2 d2
+d c3 d1
+c
+p R4 A
+d a1
+d a1
+d a1
+d a2
+c
+p R5 B
+d b1
+d b1
+d b2
+c
+p R6 B
+d b1
+d b1
+d b1
+d b2
+d b2
