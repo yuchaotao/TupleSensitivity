@@ -1,0 +1,53 @@
+c This is a hypertree for q1 (from tpc-h)
+c
+c Genral format: FLAG INDEX NAME OTHER
+c Flag meaning:
+c 'c': comment
+c 'r': relation
+c 'a': attribute
+c 'n': node
+c 'e': edge (directed)
+c
+c For each edge, the first node index is parent, the second is its child
+c For each attribute, we project the second name to the first name
+c
+r 1 REGION
+a 1 REGIONKEY R_REGIONKEY
+c
+r 2 NATION
+a 2 NATIONKEY N_NATIONKEY
+a 1 REGIONKEY N_REGIONKEY
+c
+r 3 CUSTOMER
+a 5 CUSTKEY C_CUSTKEY
+a 2 NATIONKEY C_NATIONKEY
+c
+r 4 ORDERS
+a 5 CUSTKEY O_CUSTKEY
+a 6 ORDERKEY O_ORDERKEY
+c
+r 5 LINEITEM
+a 6 ORDERKEY L_ORDERKEY
+a 4 PARTKEY L_PARTKEY
+a 3 SUPPKEY L_SUPPKEY
+c
+r 6 SUPPLIER
+a 3 SUPPKEY S_SUPPKEY
+a 2 NATIONKEY S_NATIONKEY
+c
+r 7 PART
+a 4 PARTKEY P_PARTKEY
+r 8 PARTSUPP
+a 4 PARTKEY PS_PARTKEY
+a 3 SUPPKEY PS_SUPPKEY
+c
+n 1 node_R 1
+n 2 node_N 2
+n 3 node_C 3
+n 4 node_O 4
+n 5 node_L 5
+c
+e 1 2
+e 2 3
+e 3 4
+e 4 5
