@@ -304,7 +304,6 @@ def decompose_tsens_row(res):
         tupl = [(k, v) for k,v in res.items() if k != 'tsens']
     return tupl, sens
 
-
 def select_most_sensitive_tuple(hypertree: Tree):
     tsens_list = []
     for reln,    _ in hypertree.node_map.items():
@@ -391,7 +390,6 @@ def run_algo(T: Tree, _conn):
     tstar = select_most_sensitive_tuple(T)
 
     time_finsh = time.time()
-
     elapsed = time_finsh - time_start
 
     return tstar, elapsed
