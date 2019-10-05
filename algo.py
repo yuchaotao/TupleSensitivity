@@ -3,13 +3,14 @@
 import psycopg2 as pg2
 import psycopg2.extras
 import time
-from typing import List, Set
+from typing import List, Set, Tuple
+from copy import copy
 
 DEBUG = True
 #DEBUG = False
 
-RECREATE_TABLE = True
-#RECREATE_TABLE = False
+#RECREATE_TABLE = True
+RECREATE_TABLE = False
 
 class Attribute:
     def __init__(self, index, join_name, orig_name):
@@ -45,6 +46,10 @@ class Relation:
     def __repr__(self):
         return self.__str__()
 
+def _Relation(index, name, attributes: List[str]):
+    attributes = set(Attribute(0, attr, attr) for attr in attributes)
+    return Relation(index, name, attributes)
+
 class Node:
     def __init__(self, index, name, relations: List[Relation]):
         self.index = index
@@ -66,6 +71,11 @@ class Node:
     def isLeaf(self):
         return len(self.children) == 0
 
+    def __str__(self):
+        return self.name
+
+    __repr__ = __str__
+
 class Tree:
     def __init__(self, nodes: List[Node]):
         self.nodes = nodes
@@ -81,13 +91,13 @@ class Tree:
             self.node_map[relation] = node
 
 def union_attributes(relation_list: List[Relation]):
-    attribute_set = set(relation_list[0].attributes)
+    attribute_set = copy(relation_list[0].attributes)
     for relation in relation_list:
         attribute_set |= relation.attributes
     return attribute_set
 
-def common_attributes(node_list: List[Node]) -> List[str]:
-    attribute_set = set(node_list[0].attributes)
+def common_attributes(node_list: List[Node]):
+    attribute_set = copy(node_list[0].attributes)
     for node in node_list:
         attribute_set &= node.attributes
     return attribute_set
@@ -108,6 +118,18 @@ def gen_sqlstr_neighmutli(node: Node):
     sql = gen_sqlstr_padding(sql)
     return sql
 
+def gen_sqlstr_freqmulti(center_node:Node, node_flag_list: List[Tuple[Node, str]]):
+    freq_strs = []
+    for node, flag in node_flag_list:
+        if flag == 'cohort':
+            continue
+        elif flag == 'top':
+            freq_str = 'C_{i}_{pi}'.format(i=center_node.index, pi=node.parent.index)
+        elif flag == 'bot':
+            freq_str = 'C_{i}_{pi}'.format(i=node.index, pi=center_node.index)
+        freq_strs.append(freq_str)
+    return ' * '.join(freq_strs)
+
 def gen_sqlstr_attributes(attributes):
     sql = ", ".join(map(str, attributes))
     sql = gen_sqlstr_padding(sql)
@@ -117,19 +139,6 @@ def gen_sqlstr_joins(node_names):
     sql = " NATURAL JOIN ".join(node_names)
     sql = gen_sqlstr_padding(sql)
     return sql
-
-def prepare_node(node: Node):
-    name = node.name
-    join_relations = [rel.rename() for rel in node.relations]
-    joins   =   gen_sqlstr_joins(join_relations)
-
-    sql = "SELECT * FROM {joins}"
-    sql = sql.format(joins=joins)
-    create_table(sql, name)
-
-def prepare_tree(hypertree: Tree):
-    for node in hypertree.nodes:
-        prepare_node(node)
 
 def _prepare_botjoin(node: Node):
     if node.botjoin is not None:
@@ -165,10 +174,6 @@ def _prepare_botjoin(node: Node):
 
     node.botjoin = name
     return node
-
-def prepare_botjoin(hypertree: Tree):
-    for node in hypertree.nodes:
-        _prepare_botjoin(node)
 
 def _prepare_topjoin(node: Node):
     if node.topjoin is not None:
@@ -214,15 +219,9 @@ def _prepare_topjoin(node: Node):
             sql = "SELECT {attrs}, SUM(C_{pi}_{ppi} * {neighmulti}) AS C_{i}_{pi} FROM {joins} GROUP BY {attrs}"
             sql = sql.format(attrs=attrs, i=node.index, pi=parent.index, ppi=parent.parent.index, neighmulti=neighmulti, joins=joins)
 
-
-
     create_table(sql, name)
     node.topjoin = name
     return node
-
-def prepare_topjoin(hypertree: Tree):
-    for node in hypertree.nodes:
-        _prepare_topjoin(node)
 
 def _prepare_freqtable(node: Node):
     name    =   get_nodefreq_tablename(node)
@@ -259,10 +258,6 @@ def _prepare_freqtable(node: Node):
         sql = sql.format(attrs=attrs, i=node.index, pi=parent.index, childmulti=childmulti, joins=joins)
         create_table(sql, name)
 
-def prepare_freqtable(hypertree: Tree):
-    for node in hypertree.nodes:
-        _prepare_freqtable(node)
-
 def _prepare_tuplesens(reln: Relation, node: Node):
     name = get_relnsens_tablename(reln)
 
@@ -280,20 +275,87 @@ def _prepare_tuplesens(reln: Relation, node: Node):
     sql = sql.format(attrs=attrs, joins=joins)
     create_table(sql, name)
 
+def _select_most_sensitive_tuple(reln: Relation, node: Node):
+
+    name    =   get_nodefreq_tablename(node)
+    parent  =   node.parent
+    children    =   node.children
+
+    join_relations_attrs = [((cohort, 'cohort'), cohort.attributes) for cohort in node.get_cohorts(reln)]
+    dprint(join_relations_attrs)
+
+    if node.isRoot():
+        join_relations_attrs  +=   [((child, 'bot'), common_attributes([child, node])) for child in children]
+    elif node.isLeaf():
+        join_relations_attrs  +=   [((node, 'top'), common_attributes([parent, node]))]
+    else:
+        join_relations_attrs  +=   [((child, 'bot'), common_attributes([child, node])) for child in children]
+        join_relations_attrs  +=   [((node, 'top'), common_attributes([parent, node]))]
+
+    join_clusters = get_joinclusters(join_relations_attrs)
+    tstar_candidates = []
+    for join_cluster, join_attributes in join_clusters:
+        print('clsuter:', join_cluster)
+        attrs = gen_sqlstr_attributes(join_attributes)
+        join_relations = [join_relation for join_relation, join_attributes in join_cluster]
+        join_names = get_joinnames(join_relations)
+        joins = gen_sqlstr_joins(join_names)
+        freq_str = gen_sqlstr_freqmulti(node, join_relations)
+        if freq_str != '':
+            sql = 'SELECT {attrs}, SUM({freq}) AS tsens FROM {joins} GROUP BY {attrs} ORDER BY tsens DESC LIMIT 1'
+            sql = sql.format(attrs=attrs, freq=freq_str, joins=joins)
+        else:
+            sql = 'SELECT {attrs}, COUNT(*) AS tsens FROM {joins} GROUP BY {attrs} ORDER BY tsens DESC LIMIT 1'
+            sql = sql.format(attrs=attrs, joins=joins)
+        dprint(reln, 'partial sens')
+        dprint(' '*4, sql)
+        dprint()
+        cur = run_sql(sql)
+        res = cur.fetchone()
+        tstar_candidate = decompose_tsens_row(res)
+        tstar_candidates.append(tstar_candidate)
+
+    tstar = merge_tstar_candidates(tstar_candidates)
+    return tstar
+
+def prepare_botjoin(hypertree: Tree):
+    for node in hypertree.nodes:
+        _prepare_botjoin(node)
+
+def prepare_topjoin(hypertree: Tree):
+    for node in hypertree.nodes:
+        _prepare_topjoin(node)
+
+def prepare_freqtable(hypertree: Tree):
+    for node in hypertree.nodes:
+        _prepare_freqtable(node)
+
+def prepare_node(node: Node):
+    name = node.name
+    join_relations = [rel.rename() for rel in node.relations]
+    joins   =   gen_sqlstr_joins(join_relations)
+
+    sql = "SELECT * FROM {joins}"
+    sql = sql.format(joins=joins)
+    create_table(sql, name)
+
+def prepare_tree(hypertree: Tree):
+    for node in hypertree.nodes:
+        prepare_node(node)
 
 def prepare_tuplesens(hypertree: Tree):
     for reln, node in hypertree.node_map.items():
         _prepare_tuplesens(reln, node)
 
-def _select_most_sensitive_tuple(reln: Relation):
-    name = get_relnsens_tablename(reln)
-    sql = "SELECT * FROM {relnsens} ORDER BY tsens DESC LIMIT 1";
-    sql = sql.format(relnsens=name)
-    if DEBUG:
-        print(sql)
-    cur = run_sql(sql)
-    res = cur.fetchone()
-    return res
+def select_most_sensitive_tuple(hypertree: Tree):
+    tsens_list = []
+    for reln, node in hypertree.node_map.items():
+        tupl, sens = _select_most_sensitive_tuple(reln, node)
+        if DEBUG:
+            print_tuplesens(reln, tupl, sens)
+        tsens_list.append((reln, tupl, sens))
+    tsens_list.sort(key=lambda x:x[2])
+    return tsens_list[-1], tsens_list[::-1]
 
 def decompose_tsens_row(res):
     if res is None:
@@ -304,16 +366,43 @@ def decompose_tsens_row(res):
         tupl = [(k, v) for k,v in res.items() if k != 'tsens']
     return tupl, sens
 
-def select_most_sensitive_tuple(hypertree: Tree):
-    tsens_list = []
-    for reln,    _ in hypertree.node_map.items():
-        res = _select_most_sensitive_tuple(reln)
-        tupl, sens = decompose_tsens_row(res)
-        if DEBUG:
-            print_tuplesens(reln, tupl, sens)
-        tsens_list.append((reln, tupl, sens))
-    tsens_list.sort(key=lambda x:x[2])
-    return tsens_list[-1]
+def get_joinclusters(join_relations_attrs):
+    join_clusters = []
+    while join_relations_attrs:
+        join_cluster = [join_relations_attrs[0]]
+        del join_relations_attrs[0]
+        candidate_attributes = copy(join_cluster[0][1])
+        i = 0
+        while i < len(join_relations_attrs):
+            _, join_attributes = join_relations_attrs[i]
+            if candidate_attributes & join_attributes:
+                join_cluster.append(join_relations_attrs[i])
+                candidate_attributes |= join_attributes
+                del join_relations_attrs[i]
+            else:
+                i += 1
+        join_cluster = (join_cluster, candidate_attributes)
+        join_clusters.append(join_cluster)
+    return join_clusters
+
+def get_joinnames(join_relations: List[Tuple[Node, str]]):
+    join_names = []
+    for node, flag in join_relations:
+        if flag == 'cohort':
+            join_name = node.rename()
+        elif flag == 'top':
+            join_name = get_topjoin_tablename(node)
+        elif flag == 'bot':
+            join_name = get_botjoin_tablename(node)
+        join_names.append(join_name)
+    return join_names
+
+def merge_tstar_candidates(tstar_candidates):
+    tstar = ([], 1)
+    for tstar_candidate in tstar_candidates:
+        tupl, sens = tstar_candidate
+        tstar = (tstar[0] + [tupl], tstar[1] * sens)
+    return tstar
 
 def create_table(sql, name):
     if DEBUG:
@@ -385,31 +474,31 @@ def run_algo(T: Tree, _conn):
     prepare_tree(T)
     prepare_botjoin(T)
     prepare_topjoin(T)
-    prepare_freqtable(T)
-    prepare_tuplesens(T)
-    tstar = select_most_sensitive_tuple(T)
+    #prepare_freqtable(T)
+    #prepare_tuplesens(T)
+    tstar, local_tstar_list = select_most_sensitive_tuple(T)
 
     time_finsh = time.time()
     elapsed = time_finsh - time_start
 
-    return tstar, elapsed
+    return tstar, local_tstar_list, elapsed
 
 def use_db(arch: str, scale: str):
     global conn
     dbname = arch + "_" + scale
     conn = pg2.connect(dbname=dbname, user='yuchao', password='')
 
-def dprint(s):
+def dprint(*args, **argv):
     if DEBUG:
-        print(s)
+        print(*args, **argv)
 
 def gen_arch_hw2td3():
-    R1 = Relation(1, 'R1', ['A', 'B'])
-    R2 = Relation(2, 'R2', ['B', 'C'])
-    R3 = Relation(3, 'R3', ['C'])
-    R4 = Relation(4, 'R4', ['A'])
-    R5 = Relation(5, 'R5', ['B'])
-    R6 = Relation(6, 'R6', ['B'])
+    R1 = _Relation(1, 'R1', ['A', 'B'])
+    R2 = _Relation(2, 'R2', ['B', 'C'])
+    R3 = _Relation(3, 'R3', ['C'])
+    R4 = _Relation(4, 'R4', ['A'])
+    R5 = _Relation(5, 'R5', ['B'])
+    R6 = _Relation(6, 'R6', ['B'])
     relations = [R1, R2, R3, R4, R5, R6]
 
     N1 = Node(1, 'N1', [R1, R6])
@@ -431,15 +520,15 @@ def gen_arch_hw2td3():
     return T, nodes, relations
 
 def gen_relations():
-    R1 = Relation(1, 'R1', ['A'])
-    R2 = Relation(2, 'R2', ['A', 'C'])
-    R3 = Relation(3, 'R3', ['A', 'B'])
-    R4 = Relation(4, 'R4', ['B', 'C'])
-    R5 = Relation(5, 'R5', ['C', 'D'])
-    R6 = Relation(6, 'R6', ['A', 'B', 'D'])
-    R7 = Relation(7, 'R7', ['C'])
-    R8 = Relation(8, 'R8', ['A', 'D'])
-    R9 = Relation(9, 'R9', ['D'])
+    R1 = _Relation(1, 'R1', ['A'])
+    R2 = _Relation(2, 'R2', ['A', 'C'])
+    R3 = _Relation(3, 'R3', ['A', 'B'])
+    R4 = _Relation(4, 'R4', ['B', 'C'])
+    R5 = _Relation(5, 'R5', ['C', 'D'])
+    R6 = _Relation(6, 'R6', ['A', 'B', 'D'])
+    R7 = _Relation(7, 'R7', ['C'])
+    R8 = _Relation(8, 'R8', ['A', 'D'])
+    R9 = _Relation(9, 'R9', ['D'])
     relations = [R1, R2, R3, R4, R5, R6, R7, R8, R9]
     return relations
 
@@ -539,36 +628,41 @@ def gen_arch_hw3td3():
     T = Tree(nodes)
     return T, nodes, relations
 
-def gen_report(arch, scale, tstar, elapsed, test_pass):
+def gen_report(arch, scale, query, tstar, local_tstar_list, elapsed, test_pass):
     reln, tupl, sens = tstar
     elapsed = '%.3f'%elapsed
-    print(arch, scale, elapsed, reln, tupl, sens, test_pass, sep=' | ')
+    print(arch, scale, query, elapsed, reln, tupl, sens, local_tstar_list, test_pass, sep=' | ')
 
 def gen_report_title():
-    print('arch', 'scale', 'time', 'relation', 'tuple', 'sensitivity', 'test pass', sep=' | ')
+    print('arch', 'scale', 'query', 'time', 'relation', 'tuple', 'sensitivity', 'all_table_tstar' ,'test pass', sep=' | ')
 
 def print_tuplesens(reln, tupl, sens):
     print('- Relation: ', reln)
     print('- Tuple: ', tupl)
     print('- sensitivity: ', sens)
+    print()
 
-def print_humanreadable_report(arch, scale, tstar, elapsed, test_pass):
-    print(arch+'_'+scale)
+def print_humanreadable_report(arch, scale, query, tstar, local_tstar_list, elapsed, test_pass):
+    print('arch-%s-scale-%s'%(arch, scale))
+    print('query: ', query)
     print('Time Elapsed: %.3f'%(elapsed))
     print('-'*20)
     print("The most sensitive tuple is")
     print_tuplesens(*tstar)
+    print("The most sensitive tuple for each table")
+    print('\n'.join(str(local_tstar) for local_tstar in local_tstar_list))
     print("- Test Result: ", test_pass)
     print()
 
 def _test(arch, scale):
+    global conn
     use_db(arch, scale)
     T, nodes, relations = globals()['gen_arch_'+arch]()
 
-    tstar, elapsed = run_algo(T)
+    tstar, local_tstar_list, elapsed = run_algo(T, conn)
 
     test_pass = 'Unknown'
-    if scale == 'small':
+    if scale == 'small' or scale == 'toy':
         try:
             test_groud(relations)
         except:
@@ -576,8 +670,8 @@ def _test(arch, scale):
         else:
             test_pass = 'Succeeded'
 
-    #print_humanreadable_report(arch, scale, tstar, elapsed, test_pass)
-    gen_report(arch, scale, tstar, elapsed, test_pass)
+    print_humanreadable_report(arch, scale, arch, tstar, local_tstar_list, elapsed, test_pass)
+    #gen_report(arch, scale, arch, tstar, local_tstar_list, elapsed, test_pass)
 
 def test_toy():
     arch = 'hw2td3'
@@ -592,3 +686,4 @@ def test():
 
 if __name__ == '__main__':
     test()
+    #test_toy()
