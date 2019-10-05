@@ -4,6 +4,7 @@ import algo
 import import_hypertree
 import psycopg2 as pg2
 import time
+import traceback
 
 conn = None
 arch = 'tpch'
@@ -22,10 +23,20 @@ def _test(arch, scale, q, hypertree_file, report=False):
     tstar, local_tstar_list, elapsed = algo.run_algo(T, conn)
     reln, tupl, sens = tstar
 
+    test_pass = 'Unknown'
+    if scale in ['0.0001', '0.01']:
+         try:
+             algo.test_ground(relations, tstar)
+         except:
+             test_pass = 'Failed'
+             traceback.print_exc()
+         else:
+             test_pass = 'Succeeded'
+
     if report:
-        algo.gen_report(arch, scale, q, tstar, local_tstar_list, elapsed, 'Unknown')
+        algo.gen_report(arch, scale, q, tstar, local_tstar_list, elapsed, test_pass)
     else:
-        algo.print_humanreadable_report(arch, scale, q, tstar, local_tstar_list, elapsed, 'Unknown')
+        algo.print_humanreadable_report(arch, scale, q, tstar, local_tstar_list, elapsed, test_pass)
 
 def test_full(report=False):
     for scale in ['0.1', '1', '2', '10']:

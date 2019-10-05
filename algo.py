@@ -372,15 +372,19 @@ def get_joinclusters(join_relations_attrs):
         join_cluster = [join_relations_attrs[0]]
         del join_relations_attrs[0]
         candidate_attributes = copy(join_cluster[0][1])
-        i = 0
-        while i < len(join_relations_attrs):
-            _, join_attributes = join_relations_attrs[i]
-            if candidate_attributes & join_attributes:
-                join_cluster.append(join_relations_attrs[i])
-                candidate_attributes |= join_attributes
-                del join_relations_attrs[i]
-            else:
-                i += 1
+        no_change = False
+        while not no_change:
+            no_change = True
+            i = 0
+            while i < len(join_relations_attrs):
+                _, join_attributes = join_relations_attrs[i]
+                if candidate_attributes & join_attributes:
+                    join_cluster.append(join_relations_attrs[i])
+                    candidate_attributes |= join_attributes
+                    del join_relations_attrs[i]
+                    no_change = False
+                else:
+                    i += 1
         join_cluster = (join_cluster, candidate_attributes)
         join_clusters.append(join_cluster)
     return join_clusters
@@ -401,7 +405,7 @@ def merge_tstar_candidates(tstar_candidates):
     tstar = ([], 1)
     for tstar_candidate in tstar_candidates:
         tupl, sens = tstar_candidate
-        tstar = (tstar[0] + [tupl], tstar[1] * sens)
+        tstar = (tstar[0] + tupl, tstar[1] * sens)
     return tstar
 
 def create_table(sql, name):
@@ -439,7 +443,7 @@ def get_relnsens_tablename(reln):
 def get_grouped_nodefreq_tablename(node, reln):
     return "GROUPED_NODEFREQ_" + node.name + "_" +reln.name
 
-def groud_truth(relations: List[Relation], reln, tupl):
+def ground_truth(relations: List[Relation], reln, tupl):
     single_tuple_reln = "(SELECT %s) AS %s"%(', '.join("'%s' AS %s"%(v, k) for k,v in tupl), reln.name)
     join_relations = [single_tuple_reln] + [other.name for other in relations if other != reln]
     joins   =   gen_sqlstr_joins(join_relations)
@@ -453,17 +457,26 @@ def groud_truth(relations: List[Relation], reln, tupl):
         print(res)
     return int(res[0])
 
-def test_groud(relations):
-    for reln in relations:
-        name = get_relnsens_tablename(reln)
-        sql = "SELECT * FROM %s"%name
-        cur = run_sql(sql)
-        for res in cur.fetchall():
-            tupl, sens = decompose_tsens_row(res)
-            gans = groud_truth(relations, reln, tupl)
-            if DEBUG:
-                print_tuplesens(reln, tupl, sens)
+def test_ground(relations, tstar=None):
+    try:
+        if tstar:
+            reln, tupl, sens = tstar
+            print(tupl)
+            gans = ground_truth(relations, reln, tupl)
             assert(sens == gans)
+        else:
+            for reln in relations:
+                name = get_relnsens_tablename(reln)
+                sql = "SELECT * FROM %s"%name
+                cur = run_sql(sql)
+                for res in cur.fetchall():
+                    tupl, sens = decompose_tsens_row(res)
+                    gans = ground_truth(relations, reln, tupl)
+                    if DEBUG:
+                        print_tuplesens(reln, tupl, sens)
+                    assert(sens == gans)
+    except:
+        raise Exception(tstar, 'Sens: %d'%sens, 'Gans: %d'%gans)
 
 def run_algo(T: Tree, _conn):
     global conn
@@ -662,9 +675,9 @@ def _test(arch, scale):
     tstar, local_tstar_list, elapsed = run_algo(T, conn)
 
     test_pass = 'Unknown'
-    if scale == 'small' or scale == 'toy':
+    if scale in ['small', 'toy'] or (arch == 'tpch' and scale in ['0.0001', '0.01']):
         try:
-            test_groud(relations)
+            test_ground(relations)
         except:
             test_pass = 'Failed'
         else:
