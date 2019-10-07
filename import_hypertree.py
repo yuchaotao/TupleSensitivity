@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-from algo import Attribute, Relation, Node, Tree
+from algo import Attribute, Relation, Node, BotNode, TopNode, Tree
 
 def read_hypertree_from_file(hypertree_file):
     relations = {}
@@ -32,7 +32,27 @@ def read_hypertree_from_file(hypertree_file):
             child  = nodes[info[2]]
             parent.children.append(child)
             child.parent = parent
+        elif flag == 'd':
+            index = info[1]
+            relation = relations[index]
+        elif flag == 'dn':
+            dnode_name = info[1]
+            vertex_type = info[]
     relations = relations.values()
     nodes = nodes.values()
     T = Tree(nodes)
     return T, nodes, relations
+
+def dnode_parser(info, relations, nodes):
+    dnode_name = info[1]
+    rlnds = [dparse(vertex, relations, nodes) for vertex in info[2:]]
+
+def dparse(vertex, relations, nodes):
+    flag = vertex[0]
+    index = vertex[1:]
+    if flag == 'c':
+        return relations[index]
+    elif flag == 't':
+        return TopNode(nodes[index])
+    elif flag == 'b':
+        return BotNode(nodes[index])

@@ -24,7 +24,7 @@ def _test(arch, scale, q, hypertree_file, report=False):
     reln, tupl, sens = tstar
 
     test_pass = 'Unknown'
-    if scale in ['0.0001', '0.01']:
+    if scale in ['0.0001']:
          try:
              algo.test_ground(relations, tstar)
          except:
@@ -47,13 +47,15 @@ def test_full(report=False):
 def test_q1(report=False):
     q = 'q1'
     scale = '0.1'
-    hypertree_file = qfile_format.format(arch=arch, q=q)
-    _test(arch, scale, q, hypertree_file, report)
+    scale = '0.0001'
+    for scale in ['0.0001', '0.01', '0.1', '1', '2', '10']:
+        hypertree_file = qfile_format.format(arch=arch, q=q)
+        _test(arch, scale, q, hypertree_file, report)
 
 def test_q2(report=False):
     q = 'q2'
     #for scale in ['0.0001', '0.01', '0.1']:
-    for scale in ['0.0001']:
+    for scale in ['0.1']:
         hypertree_file = qfile_format.format(arch=arch, q=q)
         _test(arch, scale, q, hypertree_file, report)
 

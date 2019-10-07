@@ -2,15 +2,36 @@
 
 import psycopg2 as pg2
 import psycopg2.extras
+import psycopg2.sql
 import time
 from typing import List, Set, Tuple
 from copy import copy
+
+SQL = psycopg2.sql.SQL
+LIT = psycopg2.sql.Literal
+IDN = psycopg2.sql.Identifier
 
 DEBUG = True
 #DEBUG = False
 
 #RECREATE_TABLE = True
 RECREATE_TABLE = False
+
+class Infix:
+    def __init__(self, function):
+        self.function = function
+    def __ror__(self, other):
+        return Infix(lambda x, self=self, other=other: self.function(other, x))
+    def __or__(self, other):
+        return self.function(other)
+    def __rlshift__(self, other):
+        return Infix(lambda x, self=self, other=other: self.function(other, x))
+    def __rshift__(self, other):
+        return self.function(other)
+    def __call__(self, value1, value2):
+        return self.function(value1, value2)
+
+INS = Infix(lambda x,y: instance(x, y))
 
 class Attribute:
     def __init__(self, index, join_name, orig_name):
@@ -75,6 +96,18 @@ class Node:
         return self.name
 
     __repr__ = __str__
+
+class DNode:
+    def __init__(self, index, name, rlnds):
+        pass
+
+class BotNode(Node):
+    def __init__(self, node):
+        self.node = node
+
+class TopNode(Node):
+    def __init__(self, node):
+        self.node = node
 
 class Tree:
     def __init__(self, nodes: List[Node]):
@@ -282,7 +315,7 @@ def _select_most_sensitive_tuple(reln: Relation, node: Node):
     children    =   node.children
 
     join_relations_attrs = [((cohort, 'cohort'), cohort.attributes) for cohort in node.get_cohorts(reln)]
-    dprint(join_relations_attrs)
+    dprint('[SEL TSENS] ', 'join_rels_attrs', join_relations_attrs)
 
     if node.isRoot():
         join_relations_attrs  +=   [((child, 'bot'), common_attributes([child, node])) for child in children]
@@ -295,7 +328,7 @@ def _select_most_sensitive_tuple(reln: Relation, node: Node):
     join_clusters = get_joinclusters(join_relations_attrs)
     tstar_candidates = []
     for join_cluster, join_attributes in join_clusters:
-        print('clsuter:', join_cluster)
+        dprint('clsuter:', join_cluster)
         attrs = gen_sqlstr_attributes(join_attributes)
         join_relations = [join_relation for join_relation, join_attributes in join_cluster]
         join_names = get_joinnames(join_relations)
@@ -409,10 +442,9 @@ def merge_tstar_candidates(tstar_candidates):
     return tstar
 
 def create_table(sql, name):
-    if DEBUG:
-        print(name)
-        print('    ' + sql)
-        print()
+    dprint(name)
+    dprint('    ' + sql)
+    dprint()
     if RECREATE_TABLE:
         sml = "DROP TABLE IF EXISTS {name}; CREATE TABLE IF NOT EXISTS {name} AS ({sql})"
     else:
@@ -444,24 +476,31 @@ def get_grouped_nodefreq_tablename(node, reln):
     return "GROUPED_NODEFREQ_" + node.name + "_" +reln.name
 
 def ground_truth(relations: List[Relation], reln, tupl):
-    single_tuple_reln = "(SELECT %s) AS %s"%(', '.join("'%s' AS %s"%(v, k) for k,v in tupl), reln.name)
-    join_relations = [single_tuple_reln] + [other.name for other in relations if other != reln]
+    sql = SQL('(SELECT {0}) AS {1}').format(
+            SQL(', ').join(
+                SQL('{0} AS {1}').format(
+                    LIT(v), IDN(k)
+                ) for k,v in tupl
+            ),
+            IDN(reln.name))
+    single_tuple_reln = sql.as_string(conn)
+
+    join_relations = [single_tuple_reln] + [other.rename() for other in relations if other != reln]
     joins   =   gen_sqlstr_joins(join_relations)
 
     sql = "SELECT COUNT(*) FROM {joins}"
     sql = sql.format(joins=joins)
     cur = run_sql(sql)
     res = cur.fetchone()
-    if DEBUG:
-        print(sql)
-        print(res)
-    return int(res[0])
+    res = int(res[0])
+    dprint('[GROUND TRUTH]', 'SENS: ', res, 'SQL: ', sql)
+    return res
 
 def test_ground(relations, tstar=None):
     try:
         if tstar:
             reln, tupl, sens = tstar
-            print(tupl)
+            dprint('[TEST GROUND]', 'tstar', tstar)
             gans = ground_truth(relations, reln, tupl)
             assert(sens == gans)
         else:
