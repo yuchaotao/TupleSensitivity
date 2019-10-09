@@ -1,6 +1,10 @@
 #!/usr/bin/python3
 
-from algo import Attribute, Relation, Node, BotNode, TopNode, Tree
+from copy import deepcopy as copy
+
+from algo import Attribute, Relation, Node, Tree
+from algo import BotNode, TopNode, DNode, DForest
+from algo import dprint
 
 def read_hypertree_from_file(hypertree_file):
     relations = {}
@@ -35,17 +39,28 @@ def read_hypertree_from_file(hypertree_file):
         elif flag == 'd':
             index = info[1]
             relation = relations[index]
+            dnodes = {}
+            dforest = DForest()
+            relations[index].dforest = dforest
         elif flag == 'dn':
-            dnode_name = info[1]
-            vertex_type = info[]
+            dnode = dnode_parser(info, relations, nodes)
+            dnodes[dnode.index] = dnode
+            dforest.dnodes.append(dnode)
+        elif flag == 'de':
+            parent = dnodes[info[1]]
+            child = dnodes[info[2]]
+            parent.children.append(child)
+            child.parent = parent
     relations = relations.values()
     nodes = nodes.values()
     T = Tree(nodes)
     return T, nodes, relations
 
 def dnode_parser(info, relations, nodes):
-    dnode_name = info[1]
-    rlnds = [dparse(vertex, relations, nodes) for vertex in info[2:]]
+    index = info[1]
+    name = info[2]
+    rlnds = [dparse(vertex, relations, nodes) for vertex in info[3:]]
+    return DNode(index, name, rlnds)
 
 def dparse(vertex, relations, nodes):
     flag = vertex[0]
@@ -56,3 +71,5 @@ def dparse(vertex, relations, nodes):
         return TopNode(nodes[index])
     elif flag == 'b':
         return BotNode(nodes[index])
+    else:
+        raise Exception('Unknown Flag: %s'%flag)

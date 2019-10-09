@@ -49,21 +49,21 @@ e 2 3
 e 3 4
 e 4 5
 c
+d 1
 dn 1 q1_dnode_bN b2
+c
+d 2
 dn 2 q1_dnode_tN t2
 dn 3 q1_dnode_bC b3
+c
+d 3
 dn 4 q1_dnode_tC t3
 dn 5 q1_dnode_bO b4
+c
+d 4
 dn 6 q1_dnode_tO t4
 dn 7 q1_dnode_bL b5
+c
+d 5
 dn 8 q1_dnode_tL t5
 c
-d 1 1
-c
-d 2 2 3
-c
-d 3 4 5
-c
-d 4 5 6
-c
-d 5 7 8

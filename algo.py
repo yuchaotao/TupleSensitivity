@@ -6,6 +6,7 @@ import psycopg2.sql
 import time
 from typing import List, Set, Tuple
 from copy import copy
+from deprecated import deprecated
 
 SQL = psycopg2.sql.SQL
 LIT = psycopg2.sql.Literal
@@ -14,8 +15,8 @@ IDN = psycopg2.sql.Identifier
 DEBUG = True
 #DEBUG = False
 
-#RECREATE_TABLE = True
-RECREATE_TABLE = False
+RECREATE_TABLE = True
+#RECREATE_TABLE = False
 
 class Infix:
     def __init__(self, function):
@@ -31,7 +32,7 @@ class Infix:
     def __call__(self, value1, value2):
         return self.function(value1, value2)
 
-INS = Infix(lambda x,y: instance(x, y))
+INS = Infix(lambda x,y: isinstance(x, y))
 
 class Attribute:
     def __init__(self, index, join_name, orig_name):
@@ -56,9 +57,16 @@ class Relation:
         self.name = name
         self.attributes = attributes
 
+        self.dtree = None
+
     def rename(self):
         new_attrs = ','.join('%s AS %s'%(attr.orig_name, attr.join_name) for attr in self.attributes)
         new_reln  = '(SELECT {new_attrs} FROM {reln}) AS {reln}'.format(new_attrs=new_attrs, reln=self.name)
+        return new_reln
+
+    def gen_sqlstr(self):
+        new_attrs = ','.join('%s AS %s'%(attr.orig_name, attr.join_name) for attr in self.attributes)
+        new_reln  = '(SELECT {new_attrs}, 1 as C_{i} FROM {reln}) AS {reln}'.format(new_attrs=new_attrs, i=self.index, reln=self.name)
         return new_reln
 
     def __str__(self):
@@ -92,22 +100,18 @@ class Node:
     def isLeaf(self):
         return len(self.children) == 0
 
+    @property
+    def project_attrs(self):
+        if self.parent is not None:
+            attrs = common_attributes([self, self.parent])
+        else:
+            attrs = self.attributes
+        return attrs
+
     def __str__(self):
         return self.name
 
     __repr__ = __str__
-
-class DNode:
-    def __init__(self, index, name, rlnds):
-        pass
-
-class BotNode(Node):
-    def __init__(self, node):
-        self.node = node
-
-class TopNode(Node):
-    def __init__(self, node):
-        self.node = node
 
 class Tree:
     def __init__(self, nodes: List[Node]):
@@ -122,6 +126,119 @@ class Tree:
     def demap_node(self, node):
         for relation in node.relations:
             self.node_map[relation] = node
+
+class DNode:
+    def __init__(self, index, name, rlnds):
+        self.index = index
+        self.name = name
+        self.rlnds = rlnds
+
+        self.parent = None
+        self.children = []
+        self.attributes = self.union_rlnd_attributes(rlnds)
+        self.project_attrs = None
+
+        self.dbotjoin = None
+
+    def union_rlnd_attributes(self, rlnds):
+        attributes = set()
+        for rlnd in rlnds:
+            if rlnd |INS| Relation:
+                next_attributes = rlnd.attributes
+            elif rlnd |INS| Node:
+                next_attributes = rlnd.attributes
+            else:
+                print(type(rlnd))
+                raise Exception
+            attributes |= next_attributes
+        return attributes
+
+    def update_project_attrs(self, reln):
+        attrs = (self.attributes) | set().union(*[child.project_attrs for child in self.children])
+        parent_attrs = self.parent.attributes if self.parent else set()
+        self.project_attrs = attrs & (parent_attrs | reln.attributes)
+
+    def isRoot(self):
+        return self.parent is None
+
+    def isLeaf(self):
+        return len(self.children) == 0
+
+    def gen_sqlstr(self):
+        name = self.name
+        attrs = gen_sqlstr_attributes(self.attributes)
+        joins = [rlnd.gen_sqlstr() for rlnd in self.rlnds]
+        joins = gen_sqlstr_joins(joins)
+        freqs = gen_sqlstr_freqmulti(self.rlnds)
+        if len(self.rlnds) > 1:
+            sql = "(SELECT {attrs}, SUM({freqs}) AS C_{i} FROM {joins} GROUP BY {attrs}) AS {name}"
+        else:
+            sql = "(SELECT {attrs}, {freqs} AS C_{i} FROM {joins}) AS {name}"
+        sql = sql.format(attrs=attrs, freqs=freqs, joins=joins, name=name, i=self.index)
+        return sql
+
+    def __str__(self):
+        return self.name
+
+    __repr__ = __str__
+
+class BotNode(Node):
+    def __init__(self, node):
+        self.node = node
+
+    @property
+    def index(self):
+        return self.node.index
+
+    @property
+    def parent(self):
+        return self.node.parent
+
+    @property
+    def attributes(self):
+        return self.node.project_attrs
+
+    @property
+    def name(self):
+        return '<%s>%s'%('bot', self.node.name)
+
+    def gen_sqlstr(self):
+        return get_botjoin_tablename(self.node)
+
+class TopNode(Node):
+    def __init__(self, node):
+        self.node = node
+
+    @property
+    def index(self):
+        return self.node.index
+
+    @property
+    def parent(self):
+        return self.node.parent
+
+    @property
+    def attributes(self):
+        return self.node.project_attrs
+
+    @property
+    def name(self):
+        return '<%s>%s'%('top', self.node.name)
+
+    def gen_sqlstr(self):
+        return get_topjoin_tablename(self.node)
+
+class DForest:
+    def __init__(self, dnodes: List[DNode] = None):
+        if dnodes:
+            self.dnodes = dnodes
+        else:
+            self.dnodes = []
+
+    def __str__(self):
+        return str(self.dnodes)
+
+    __repr__ = __str__
 
 def union_attributes(relation_list: List[Relation]):
     attribute_set = copy(relation_list[0].attributes)
@@ -143,15 +260,16 @@ def gen_sqlstr_padding(sqlstr):
 
 def gen_sqlstr_childmutli(node: Node):
     sql = " * ".join(["C_{i}_{pi}".format(i=child.index, pi=node.index) for child in node.children])
-    sql = gen_sqlstr_padding(sql)
+    #sql = gen_sqlstr_padding(sql)
     return sql
 
 def gen_sqlstr_neighmutli(node: Node):
     sql = " * ".join(["C_{i}_{pi}".format(i=neigh.index, pi=node.parent.index) for neigh in get_neighbours(node)])
-    sql = gen_sqlstr_padding(sql)
+    #sql = gen_sqlstr_padding(sql)
     return sql
 
-def gen_sqlstr_freqmulti(center_node:Node, node_flag_list: List[Tuple[Node, str]]):
+@deprecated
+def deprecated_gen_sqlstr_freqmulti(center_node:Node, node_flag_list: List[Tuple[Node, str]]):
     freq_strs = []
     for node, flag in node_flag_list:
         if flag == 'cohort':
@@ -163,14 +281,30 @@ def gen_sqlstr_freqmulti(center_node:Node, node_flag_list: List[Tuple[Node, str]
         freq_strs.append(freq_str)
     return ' * '.join(freq_strs)
 
+def gen_sqlstr_freqmulti(rlnds_or_dnode):
+    freq_strs = []
+    if rlnds_or_dnode |INS| DNode:
+        dnode = rlnds_or_dnode
+        freq_strs.append('C_{i}'.format(i=dnode.index))
+        freq_strs += ['C_{i}_{pi}'.format(i=dchild.index, pi=dnode.index) for dchild in dnode.children]
+    else:
+        rlnds = rlnds_or_dnode
+        for rlnd in rlnds:
+            if rlnd |INS| Relation:
+                freq_str = 'C_{i}'.format(i=rlnd.index)
+            elif rlnd |INS| Node:
+                freq_str = 'C_{i}_{pi}'.format(i=rlnd.index, pi=rlnd.parent.index)
+            freq_strs.append(freq_str)
+    return ' * '.join(freq_strs)
+
 def gen_sqlstr_attributes(attributes):
     sql = ", ".join(map(str, attributes))
-    sql = gen_sqlstr_padding(sql)
+    #sql = gen_sqlstr_padding(sql)
     return sql
 
 def gen_sqlstr_joins(node_names):
     sql = " NATURAL JOIN ".join(node_names)
-    sql = gen_sqlstr_padding(sql)
+    #sql = gen_sqlstr_padding(sql)
     return sql
 
 def _prepare_botjoin(node: Node):
@@ -308,7 +442,8 @@ def _prepare_tuplesens(reln: Relation, node: Node):
     sql = sql.format(attrs=attrs, joins=joins)
     create_table(sql, name)
 
-def _select_most_sensitive_tuple(reln: Relation, node: Node):
+@deprecated
+def deprecated_select_most_sensitive_tuple(reln: Relation, node: Node):
 
     name    =   get_nodefreq_tablename(node)
     parent  =   node.parent
@@ -351,6 +486,65 @@ def _select_most_sensitive_tuple(reln: Relation, node: Node):
     tstar = merge_tstar_candidates(tstar_candidates)
     return tstar
 
+class BotjoinING:
+    pass
+
+def prepare_dbotjoin(reln: Relation, dnode: DNode, view_queue: List[Tuple[str, str]], ptstar_candidates):
+    if dnode.dbotjoin is not None or dnode.dbotjoin |INS| BotjoinING:
+        return
+
+    dnode.dbotjoin = BotjoinING()
+    dprint('dnode: ', dnode, ', children', dnode.children)
+    for dchild in dnode.children:
+        prepare_dbotjoin(reln, dchild, view_queue, ptstar_candidates)
+
+    dnode.update_project_attrs(reln)
+    attrs = dnode.project_attrs
+    dprint('dnode.project_attrs: ', attrs)
+    attrs = gen_sqlstr_attributes(attrs)
+    joins = [dnode.gen_sqlstr()] + [get_dbotjoin_tablename(dchild) for dchild in dnode.children]
+    joins = gen_sqlstr_joins(joins)
+    freqs = gen_sqlstr_freqmulti(dnode)
+    name = get_dbotjoin_tablename(dnode)
+
+    if not dnode.isRoot():
+        sql = 'SELECT {attrs}, SUM({freqs}) AS C_{i}_{pi} FROM {joins} GROUP BY {attrs}'
+        sql = sql.format(attrs=attrs, freqs=freqs, joins=joins, i=dnode.index, pi=dnode.parent.index)
+        view_queue.append((sql, name))
+        dnode.dbotjoin = name
+        #dprint(name, dnode.parent, [name for sql, name in view_queue])
+        prepare_dbotjoin(reln, dnode.parent, view_queue, ptstar_candidates)
+    else:
+        dprint('DNode Attrs: ', dnode.attributes, 'Reln Attrs: ', reln.attributes)
+        if view_queue:
+            sql = 'WITH \n' + ', \n'.join('    {name} AS ({view})'.format(view=view, name=name) for view, name in view_queue) + '\n'
+        else:
+            sql = ''
+        sql = sql + '    SELECT {attrs}, SUM({freqs}) AS ptsens FROM {joins} GROUP BY {attrs} ORDER BY ptsens DESC LIMIT 1'
+        sql = sql.format(attrs=attrs, freqs=freqs, joins=joins)
+        dprint(name)
+        dprint([name for sql, name in view_queue])
+        dprint(' '*4 +  sql)
+        dprint()
+        cur = run_sql(sql)
+        res = cur.fetchone()
+        ptstar_candidate = decompose_ptsens_row(res)
+        ptstar_candidates.append(ptstar_candidate)
+        dnode.dbotjoin = name
+
+def learn_ptstar_candidates(reln: Relation):
+    ptstar_candidates = []
+    for dnode in reln.dforest.dnodes:
+        view_queue = []
+        prepare_dbotjoin(reln, dnode, view_queue, ptstar_candidates)
+    return ptstar_candidates
+
+def select_ltstar(reln: Relation, node: Node):
+    dprint('Relation: ', reln, ', DForest', reln.dforest)
+    ptstar_candidates = learn_ptstar_candidates(reln)
+    ltstar = merge_ptstar_candidates(ptstar_candidates)
+    return ltstar
+
 def prepare_botjoin(hypertree: Tree):
     for node in hypertree.nodes:
         _prepare_botjoin(node)
@@ -381,14 +575,15 @@ def prepare_tuplesens(hypertree: Tree):
         _prepare_tuplesens(reln, node)
 
 def select_most_sensitive_tuple(hypertree: Tree):
-    tsens_list = []
+    ltstars = []
     for reln, node in hypertree.node_map.items():
-        tupl, sens = _select_most_sensitive_tuple(reln, node)
+        tupl, sens = select_ltstar(reln, node)
         if DEBUG:
             print_tuplesens(reln, tupl, sens)
-        tsens_list.append((reln, tupl, sens))
-    tsens_list.sort(key=lambda x:x[2])
-    return tsens_list[-1], tsens_list[::-1]
+        ltstars.append((reln, tupl, sens))
+    ltstars.sort(key=lambda x:x[2], reverse=True)
+    tstar = ltstars[0]
+    return tstar, ltstars
 
 def decompose_tsens_row(res):
     if res is None:
@@ -399,6 +594,23 @@ def decompose_tsens_row(res):
         tupl = [(k, v) for k,v in res.items() if k != 'tsens']
     return tupl, sens
 
+def decompose_ptsens_row(res):
+    if res is None:
+        sens = 0
+        tupl = [('any', 'any')]
+    else:
+        sens = int(res['ptsens'])
+        tupl = [(k, v) for k,v in res.items() if k != 'ptsens']
+    return tupl, sens
+
+def merge_ptstar_candidates(ptstar_candidates):
+    ptstar = ([], 1)
+    for ptstar_candidate in ptstar_candidates:
+        tupl, sens = ptstar_candidate
+        ptstar = (ptstar[0] + tupl, ptstar[1] * sens)
+    return ptstar
+
+@deprecated
 def get_joinclusters(join_relations_attrs):
     join_clusters = []
     while join_relations_attrs:
@@ -422,6 +634,7 @@ def get_joinclusters(join_relations_attrs):
         join_clusters.append(join_cluster)
     return join_clusters
 
+@deprecated
 def get_joinnames(join_relations: List[Tuple[Node, str]]):
     join_names = []
     for node, flag in join_relations:
@@ -433,13 +646,6 @@ def get_joinnames(join_relations: List[Tuple[Node, str]]):
             join_name = get_botjoin_tablename(node)
         join_names.append(join_name)
     return join_names
-
-def merge_tstar_candidates(tstar_candidates):
-    tstar = ([], 1)
-    for tstar_candidate in tstar_candidates:
-        tupl, sens = tstar_candidate
-        tstar = (tstar[0] + tupl, tstar[1] * sens)
-    return tstar
 
 def create_table(sql, name):
     dprint(name)
@@ -472,6 +678,9 @@ def get_nodefreq_tablename(node):
 def get_relnsens_tablename(reln):
     return "RELNSENS_" + reln.name
 
+def get_dbotjoin_tablename(dnode):
+    return "DBOTJOIN_" + dnode.name
+
 def get_grouped_nodefreq_tablename(node, reln):
     return "GROUPED_NODEFREQ_" + node.name + "_" +reln.name
 
@@ -490,19 +699,22 @@ def ground_truth(relations: List[Relation], reln, tupl):
 
     sql = "SELECT COUNT(*) FROM {joins}"
     sql = sql.format(joins=joins)
+    dprint('[GROUND TRUTH]', 'SQL: ', sql)
     cur = run_sql(sql)
     res = cur.fetchone()
     res = int(res[0])
-    dprint('[GROUND TRUTH]', 'SENS: ', res, 'SQL: ', sql)
+    dprint('[GROUND TRUTH]', 'SENS: ', res)
     return res
 
-def test_ground(relations, tstar=None):
+def test_ground(relations, tstars=None):
     try:
-        if tstar:
-            reln, tupl, sens = tstar
-            dprint('[TEST GROUND]', 'tstar', tstar)
-            gans = ground_truth(relations, reln, tupl)
-            assert(sens == gans)
+        if tstars:
+            for tstar in tstars:
+                reln, tupl, sens = tstar
+                dprint('[TEST GROUND]', 'tstar', tstar)
+                gans = ground_truth(relations, reln, tupl)
+                dprint()
+                assert(sens == gans)
         else:
             for reln in relations:
                 name = get_relnsens_tablename(reln)
