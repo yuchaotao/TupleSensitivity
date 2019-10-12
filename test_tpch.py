@@ -13,15 +13,15 @@ qfile_format = 'queries/{arch}/{q}.hypertree'
 def use_db(arch, scale):
     global conn
     dbname = 'arch-{arch}-scale-{scale}'.format(arch=arch, scale=scale)
-    conn = pg2.connect(dbname=dbname, host='localhost', user='duke', password='duke')
+    conn = pg2.connect(dbname=dbname, host='localhost', user='duke', password='duke', port='5422')
 
-def _test(arch, scale, q, hypertree_file, report=False):
+def _test(arch, scale, q, hypertree_file, exclusion=[], report=False):
     global conn
     use_db(arch, scale)
     T, nodes, relations = import_hypertree.read_hypertree_from_file(hypertree_file)
 
-    tstar, ltstars, elapsed = algo.run_algo(T, conn)
-    reln, tupl, sens = tstar
+    tstar, ltstars, elapsed = algo.run_algo(T, conn, exclusion)
+    reln, tupl, sens = tstar.asTuple()
 
     test_pass = 'Unknown'
     #if True:
@@ -43,7 +43,7 @@ def test_full(report=False):
     for scale in ['0.1', '1', '2', '10']:
         for q in ['q1', 'q2']:
             hypertree_file = qfile_format.format(arch=arch, q=q)
-            _test(arch, scale, q, hypertree_file, report)
+            _test(arch, scale, q, hypertree_file, report=report)
 
 def test_q1(report=False):
     q = 'q1'
@@ -52,16 +52,17 @@ def test_q1(report=False):
     #for scale in ['0.0001', '0.01', '0.1', '1', '2', '10']:
     for scale in ['0.01', '0.1']:
         hypertree_file = qfile_format.format(arch=arch, q=q)
-        _test(arch, scale, q, hypertree_file, report)
+        _test(arch, scale, q, hypertree_file, report=report)
 
 def test_q2(report=False):
     q = 'q2'
+    exclusion = ['LINEITEM']
     #for scale in ['0.0001', '0.01', '0.1']:
-    for scale in ['0.01']:
+    for scale in ['0.1']:
         hypertree_file = qfile_format.format(arch=arch, q=q)
-        _test(arch, scale, q, hypertree_file, report)
+        _test(arch, scale, q, hypertree_file, exclusion, report=report)
 
 if __name__ == '__main__':
-    #test_q1()
-    test_q2()
+    test_q1()
+    #test_q2()
     #test_full()
