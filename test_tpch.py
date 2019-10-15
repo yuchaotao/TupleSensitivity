@@ -1,68 +1,90 @@
 #!/usr/bin/python3
 
-import algo
-import import_hypertree
-import psycopg2 as pg2
-import time
-import traceback
+from run import run_TSens, run_Elastic
+from algo import gen_report_title
 
-conn = None
 arch = 'tpch'
-qfile_format = 'queries/{arch}/{q}.hypertree'
-
-def use_db(arch, scale):
-    global conn
-    dbname = 'arch-{arch}-scale-{scale}'.format(arch=arch, scale=scale)
-    conn = pg2.connect(dbname=dbname, host='localhost', user='duke', password='duke', port='5422')
-
-def _test(arch, scale, q, hypertree_file, exclusion=[], report=False):
-    global conn
-    use_db(arch, scale)
-    T, nodes, relations = import_hypertree.read_hypertree_from_file(hypertree_file)
-
-    tstar, ltstars, elapsed = algo.run_algo(T, conn, exclusion)
-    reln, tupl, sens = tstar.asTuple()
-
-    test_pass = 'Unknown'
-    #if True:
-    if scale in ['0.0001']:
-         try:
-             algo.test_ground(relations, ltstars)
-         except:
-             test_pass = 'Failed'
-             traceback.print_exc()
-         else:
-             test_pass = 'Succeeded'
-
-    if report:
-        algo.gen_report(arch, scale, q, tstar, ltstars, elapsed, test_pass)
-    else:
-        algo.print_humanreadable_report(arch, scale, q, tstar, ltstars, elapsed, test_pass)
 
 def test_full(report=False):
     for scale in ['0.1', '1', '2', '10']:
         for q in ['q1', 'q2']:
-            hypertree_file = qfile_format.format(arch=arch, q=q)
-            _test(arch, scale, q, hypertree_file, report=report)
+            run_TSens(arch, scale, q, report=report)
 
 def test_q1(report=False):
-    q = 'q1'
+    #for scale in ['0.0001', '0.01', '0.1', '1', '2', '10']:
+    #for scale in ['0.01', '0.1']:
+    for scale in ['0.01']:
+        run_TSens(arch, scale, q='q1', report=report)
+
+def test_q2(report=False):
     scale = '0.1'
     scale = '0.0001'
     #for scale in ['0.0001', '0.01', '0.1', '1', '2', '10']:
-    for scale in ['0.01', '0.1']:
-        hypertree_file = qfile_format.format(arch=arch, q=q)
-        _test(arch, scale, q, hypertree_file, report=report)
+    #for scale in ['0.01', '0.1']:
+    for scale in ['1']:
+        run_TSens(arch, scale, q='q2', report=report)
 
-def test_q2(report=False):
+def test_q3(report=False):
     q = 'q2'
     exclusion = ['LINEITEM']
     #for scale in ['0.0001', '0.01', '0.1']:
-    for scale in ['0.1']:
-        hypertree_file = qfile_format.format(arch=arch, q=q)
-        _test(arch, scale, q, hypertree_file, exclusion, report=report)
+    #for scale in ['0.1']:
+    for scale in ['0.01']:
+        run_TSens(arch, scale, q='q3', exclusion=exclusion, report=report)
+
+def test_q1_elastic():
+    scale = '0.01'
+    run_Elastic(arch, scale, q='q1')
+
+def test_q2_elastic():
+    scale = '0.01'
+    run_Elastic(arch, scale, q='q2')
+
+def test_q3_elastic():
+    scale = '0.01'
+    run_Elastic(arch, scale, q='q3')
+
+def gen_report():
+    report=True
+    gen_report_title()
+    for scale in ['0.0001', '0.001', '0.01', '0.1', '1', '2', '10']:
+        for q in ['q1', 'q2', 'q3']:
+            run_Elastic(arch, scale, q, report=report)
+    for scale in ['0.0001', '0.001', '0.01', '0.1', '1', '2', '10']:
+        run_TSens(arch, scale, q='q1', report=report)
+    for scale in ['0.0001', '0.001', '0.01', '0.1', '1', '2', '10']:
+        run_TSens(arch, scale, q='q2', exclusion=['LINEITEM'], report=report)
+    for scale in ['0.0001', '0.001', '0.01', '0.1', '1']:
+        run_TSens(arch, scale, q='q3', exclusion=['LINEITEM'], report=report)
+
+def _gen_report():
+    report=True
+    gen_report_title()
+    for scale in ['0.0001']:
+        for q in ['q1', 'q2', 'q3']:
+            run_Elastic(arch, scale, q, report=report)
+    for scale in ['0.0001']:
+        run_TSens(arch, scale, q='q1', report=report)
+    for scale in ['0.0001']:
+        run_TSens(arch, scale, q='q2', exclusion=['LINEITEM'], report=report)
+    for scale in ['0.0001']:
+        run_TSens(arch, scale, q='q3', exclusion=['LINEITEM'], report=report)
+
+def run_missing():
+    #report=True
+    report=False
+    for scale in ['0.1', '1']:
+        run_TSens(arch, scale, q='q3', exclusion=['LINEITEM'], report=report)
+
 
 if __name__ == '__main__':
-    test_q1()
+    #test_q1_elastic()
+    #test_q2_elastic()
+    #test_q3_elastic()
+    #test_q1()
     #test_q2()
+    #test_q3()
     #test_full()
+
+    #gen_report()
+    run_missing()

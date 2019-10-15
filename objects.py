@@ -10,6 +10,8 @@ class Attribute:
         self.join_name = join_name
         self.orig_name = orig_name
 
+        self.mf = None
+
     def __eq__(self, other):
         return other and self.join_name == other.join_name
 
@@ -28,10 +30,17 @@ class Relation:
         self.attributes = attributes
 
         self.dforest = None
+        self.sens = None
+        self.size = None
 
     def rename(self):
         new_attrs = ','.join('%s AS %s'%(attr.orig_name, attr.join_name) for attr in self.attributes)
         new_reln  = '(SELECT {new_attrs} FROM {reln}) AS {reln}'.format(new_attrs=new_attrs, reln=self.name)
+        return new_reln
+
+    def rename_attributes(self):
+        new_attrs = ','.join('%s AS %s'%(attr.orig_name, attr.join_name) for attr in self.attributes)
+        new_reln  = 'SELECT {new_attrs} FROM {reln}'.format(new_attrs=new_attrs, reln=self.name)
         return new_reln
 
     def gen_sqlstr(self):
@@ -56,6 +65,9 @@ class Node:
         self.botjoin = None
         self.topjoin = None
         self.attributes = union_attributes(relations)
+
+        self.sensreln = None
+        self.botsensreln = None
 
     def get_cohorts(self, relation):
         return [rel for rel in self.relations if rel != relation]
@@ -106,6 +118,11 @@ class TupleSens:
         return str(self.asTuple())
 
     __repr__ = __str__
+
+def max_ltstars(ltstars):
+    ltstars.sort(key=lambda tsens: tsens.sens, reverse=True)
+    tstar = ltstars[0]
+    return tstar, ltstars
 
 class DNode:
     def __init__(self, index, name, rlnds):

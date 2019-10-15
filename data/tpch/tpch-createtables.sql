@@ -18,7 +18,7 @@ CREATE TABLE part (
   P_RETAILPRICE decimal,
   P_COMMENT varchar(23)
 );
-COPY part FROM '/home/BigDATA/TupleSens/data/tpch/tpch-data/scale-0.01/part.tbl' DELIMITER '|';
+COPY part FROM '/home/BigDATA/TupleSens/data/tpch/tpch-data/scale-0.001/part.tbl' DELIMITER '|';
 
 CREATE TABLE supplier (
   S_SUPPKEY integer PRIMARY KEY,
@@ -29,7 +29,7 @@ CREATE TABLE supplier (
   S_ACCTBAL decimal,
   S_COMMENT varchar(101)
 );
-COPY supplier FROM '/home/BigDATA/TupleSens/data/tpch/tpch-data/scale-0.01/supplier.tbl' DELIMITER '|';
+COPY supplier FROM '/home/BigDATA/TupleSens/data/tpch/tpch-data/scale-0.001/supplier.tbl' DELIMITER '|';
 
 CREATE TABLE partsupp (
   PS_PARTKEY integer,
@@ -38,7 +38,7 @@ CREATE TABLE partsupp (
   PS_SUPPLYCOST Decimal,
   PS_COMMENT varchar(199)
 );
-COPY partsupp FROM '/home/BigDATA/TupleSens/data/tpch/tpch-data/scale-0.01/partsupp.tbl' DELIMITER '|';
+COPY partsupp FROM '/home/BigDATA/TupleSens/data/tpch/tpch-data/scale-0.001/partsupp.tbl' DELIMITER '|';
 
 CREATE TABLE customer (
   C_CUSTKEY integer PRIMARY KEY,
@@ -50,7 +50,7 @@ CREATE TABLE customer (
   C_MKTSEGMENT varchar(10),
   C_COMMENT varchar(117)
 );
-COPY customer FROM '/home/BigDATA/TupleSens/data/tpch/tpch-data/scale-0.01/customer.tbl' DELIMITER '|';
+COPY customer FROM '/home/BigDATA/TupleSens/data/tpch/tpch-data/scale-0.001/customer.tbl' DELIMITER '|';
 
 CREATE TABLE orders (
   O_ORDERKEY integer PRIMARY KEY,
@@ -63,7 +63,7 @@ CREATE TABLE orders (
   O_SHIPPRIORITY Integer,
   O_COMMENT varchar(79)
 );
-COPY orders FROM '/home/BigDATA/TupleSens/data/tpch/tpch-data/scale-0.01/orders.tbl' DELIMITER '|';
+COPY orders FROM '/home/BigDATA/TupleSens/data/tpch/tpch-data/scale-0.001/orders.tbl' DELIMITER '|';
 
 CREATE TABLE lineitem (
   L_ORDERKEY integer,
@@ -83,7 +83,7 @@ CREATE TABLE lineitem (
   L_SHIPMODE varchar(10),
   L_COMMENT varchar(44)
 );
-COPY lineitem FROM '/home/BigDATA/TupleSens/data/tpch/tpch-data/scale-0.01/lineitem.tbl' DELIMITER '|';
+COPY lineitem FROM '/home/BigDATA/TupleSens/data/tpch/tpch-data/scale-0.001/lineitem.tbl' DELIMITER '|';
 
 CREATE TABLE nation (
   N_NATIONKEY integer PRIMARY KEY,
@@ -91,11 +91,11 @@ CREATE TABLE nation (
   N_REGIONKEY integer,
   N_COMMENT varchar(152)
 );
-COPY nation FROM '/home/BigDATA/TupleSens/data/tpch/tpch-data/scale-0.01/nation.tbl' DELIMITER '|';
+COPY nation FROM '/home/BigDATA/TupleSens/data/tpch/tpch-data/scale-0.001/nation.tbl' DELIMITER '|';
 
 CREATE TABLE region (
   R_REGIONKEY integer PRIMARY KEY,
   R_NAME varchar(25),
   R_COMMENT varchar(152)
 );
-COPY region FROM '/home/BigDATA/TupleSens/data/tpch/tpch-data/scale-0.01/region.tbl' DELIMITER '|';
+COPY region FROM '/home/BigDATA/TupleSens/data/tpch/tpch-data/scale-0.001/region.tbl' DELIMITER '|';

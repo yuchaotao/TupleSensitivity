@@ -14,14 +14,14 @@ from objects import union_attributes, common_attributes
 from objects import get_neighbours
 from objects import gen_sqlstr_attributes, gen_sqlstr_childmutli, gen_sqlstr_joins, gen_sqlstr_neighmutli, gen_sqlstr_freqmulti, gen_sqlstr_padding
 from objects import get_botjoin_tablename, get_topjoin_tablename, get_nodefreq_tablename, get_relnsens_tablename, get_dbotjoin_tablename, get_grouped_nodefreq_tablename
-from utils import INS
+from objects import max_ltstars
+from utils import INS, dprint, DEBUG, timeout, TimeoutError
+
+import db
 
 SQL = psycopg2.sql.SQL
 LIT = psycopg2.sql.Literal
 IDN = psycopg2.sql.Identifier
-
-DEBUG = True
-#DEBUG = False
 
 RECREATE_TABLE = True
 #RECREATE_TABLE = False
@@ -266,6 +266,10 @@ def select_ltstar(reln: Relation, node: Node):
     ltstar = TupleSens(reln, tupl, sens)
     return ltstar
 
+def dummy_ltstar(reln: Relation):
+    ltstar = TupleSens(reln, [], 1)
+    return ltstar
+
 def prepare_botjoin(hypertree: Tree):
     for node in hypertree.nodes:
         _prepare_botjoin(node)
@@ -280,12 +284,17 @@ def prepare_freqtable(hypertree: Tree):
 
 def prepare_node(node: Node):
     name = node.name
-    join_relations = [rel.rename() for rel in node.relations]
-    joins   =   gen_sqlstr_joins(join_relations)
+    if len(node.relations) == 1:
+        reln = node.relations[0]
+        sql = reln.rename_attributes()
+        create_view(sql, name)
+    else:
+        join_relations = [reln.rename() for reln in node.relations]
+        joins   =   gen_sqlstr_joins(join_relations)
 
-    sql = "SELECT * FROM {joins}"
-    sql = sql.format(joins=joins)
-    create_table(sql, name)
+        sql = "SELECT * FROM {joins}"
+        sql = sql.format(joins=joins)
+        create_table(sql, name)
 
 def prepare_tree(hypertree: Tree):
     for node in hypertree.nodes:
@@ -298,15 +307,14 @@ def prepare_tuplesens(hypertree: Tree):
 def select_most_sensitive_tuple(hypertree: Tree, exclusion: List[str] = []):
     ltstars = []
     for reln, node in hypertree.node_map.items():
-        dprint(exclusion)
         if reln.name in exclusion:
-            continue
-        ltstar = select_ltstar(reln, node)
+            ltstar = dummy_ltstar(reln)
+        else:
+            ltstar = select_ltstar(reln, node)
         if DEBUG:
             print_tuplesens(ltstar)
         ltstars.append(ltstar)
-    ltstars.sort(key=lambda x:x.sens, reverse=True)
-    tstar = ltstars[0]
+    tstar, ltstars = max_ltstars(ltstars)
     return tstar, ltstars
 
 def decompose_tsens_row(res):
@@ -376,19 +384,34 @@ def create_table(sql, name):
     dprint('    ' + sql)
     dprint()
     if RECREATE_TABLE:
-        sml = "DROP TABLE IF EXISTS {name}; CREATE TABLE IF NOT EXISTS {name} AS ({sql})"
-    else:
-        sml = "CREATE TABLE IF NOT EXISTS {name} AS ({sql})"
+        drop_table_or_view(name)
+    sml = "CREATE TABLE IF NOT EXISTS {name} AS ({sql})"
     sml = sml.format(sql=sql, name=name)
     run_sql(sml)
 
+def create_view(sql, name):
+    dprint(name)
+    dprint('    ' + sql)
+    dprint()
+    if RECREATE_TABLE:
+        drop_table_or_view(name)
+    sml = "CREATE VIEW {name} AS ({sql})"
+    sml = sml.format(sql=sql, name=name)
+    run_sql_silent(sml)
+
+def drop_table_or_view(name):
+    sml = "DROP TABLE IF EXISTS {name};"
+    run_sql_silent(sml)
+    sml = "DROP VIEW IF EXISTS {name};"
+    run_sql_silent(sml)
+
 def run_sql(sql):
     global conn
-    cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    cur.execute(sql)
+    return db.run_sql(sql, conn)
 
-    conn.commit()
-    return cur
+def run_sql_silent(sql):
+    global conn
+    return db.run_sql_silent(sql, conn)
 
 def ground_truth(relations: List[Relation], reln, tupl):
     sql = SQL('(SELECT {0}) AS {1}').format(
@@ -412,11 +435,17 @@ def ground_truth(relations: List[Relation], reln, tupl):
     dprint('[GROUND TRUTH]', 'SENS: ', res)
     return res
 
+class TStarError(Exception):
+    pass
+
+@timeout(3)
 def test_ground(relations, tstars=None):
     try:
         if tstars:
             for tstar in tstars:
-                reln, tupl, sens = tstar
+                reln, tupl, sens = tstar.asTuple()
+                if not tupl:
+                    continue
                 dprint('[TEST GROUND]', 'tstar', tstar)
                 gans = ground_truth(relations, reln, tupl)
                 dprint()
@@ -433,10 +462,12 @@ def test_ground(relations, tstars=None):
                     if DEBUG:
                         print_tuplesens(tsens)
                     assert(sens == gans)
-    except:
-        raise Exception(tstar, 'Sens: %d'%sens, 'Gans: %d'%gans)
+    except TimeoutError:
+        raise TimeoutError
+    except AssertionError:
+        raise TStarError(tstar, 'Sens: %d'%sens, 'Gans: %d'%gans)
 
-def run_algo(T: Tree, _conn, exclusion=[]):
+def tuple_sens(T: Tree, _conn, exclusion=[]):
     global conn
     conn = _conn
 
@@ -454,17 +485,13 @@ def run_algo(T: Tree, _conn, exclusion=[]):
 
     return tstar, local_tstar_list, elapsed
 
-def dprint(*args, **argv):
-    if DEBUG:
-        print(*args, **argv)
-
-def gen_report(arch, scale, query, tstar, local_tstar_list, elapsed, test_pass):
-    reln, tupl, sens = tstar
+def gen_report(algo_name, arch, scale, query, tstar, local_tstar_list, elapsed, test_pass):
+    reln, tupl, sens = tstar.asTuple()
     elapsed = '%.3f'%elapsed
-    print(arch, scale, query, elapsed, reln, tupl, sens, local_tstar_list, test_pass, sep=' | ')
+    print(algo_name, arch, scale, query, elapsed, reln, tupl, sens, local_tstar_list, test_pass, sep=' | ')
 
 def gen_report_title():
-    print('arch', 'scale', 'query', 'time', 'relation', 'tuple', 'sensitivity', 'all_table_tstar' ,'test pass', sep=' | ')
+    print('algo', 'arch', 'scale', 'query', 'time', 'relation', 'tuple', 'sensitivity', 'all_table_tstar' ,'test pass', sep=' | ')
 
 def print_tuplesens(tsens):
     reln, tupl, sens = tsens.asTuple()
@@ -473,7 +500,8 @@ def print_tuplesens(tsens):
     print('- sensitivity: ', sens)
     print()
 
-def print_humanreadable_report(arch, scale, query, tstar, local_tstar_list, elapsed, test_pass):
+def print_humanreadable_report(algo_name, arch, scale, query, tstar, local_tstar_list, elapsed, test_pass):
+    print('algorithm:', algo_name)
     print('arch-%s-scale-%s'%(arch, scale))
     print('query: ', query)
     print('Time Elapsed: %.3f'%(elapsed))
