@@ -110,56 +110,43 @@ def _prepare_topjoin(node: Node):
     node.topjoin = name
     return node
 
-def _prepare_freqtable(node: Node):
-    name    =   get_nodefreq_tablename(node)
-    parent  =   node.parent
-    children    =   node.children
+def _prepare_freqtable(reln: Relation):
+    for dnode in reln.dforest.dnodes:
+        if dnode.isRoot():
+            name, view_queue = dnode.dbotjoin
+        else:
+            continue
+        attrs = dnode.project_attrs
+        attrs = gen_sqlstr_attributes(attrs)
+        joins = [dnode.gen_sqlstr()] + [get_dbotjoin_tablename(dchild) for dchild in dnode.children]
+        joins = gen_sqlstr_joins(joins)
+        freqs = gen_sqlstr_freqmulti(dnode)
+        sql = 'SELECT {attrs}, SUM({freqs}) AS ptsens_{ri}_{dni} FROM {joins} GROUP BY {attrs}'
+        sql = sql.format(attrs=attrs, freqs=freqs, joins=joins, ri=reln.index, dni=dnode.index)
+        view_queue.append((sql, name))
 
-    if node.isRoot():
-        join_relations  =   [get_botjoin_tablename(child) for child in children]
+def _prepare_tuplesens(reln: Relation):
+    view_queue = []
+    joins = [reln.rename()]
+    freqs = []
+    for dnode in reln.dforest.dnodes:
+        if dnode.isRoot():
+            name, part_view_queue = dnode.dbotjoin
+        else:
+            continue
+        view_queue += part_view_queue
+        joins.append(name)
+        freqs.append('ptsens_{ri}_{dni}'.format(ri=reln.index, dni=dnode.index))
 
-        attrs   =   gen_sqlstr_attributes(node.attributes)
-        childmulti  =   gen_sqlstr_childmutli(node)
-        joins   =   gen_sqlstr_joins(join_relations)
+    freqs = ' * '.join(freqs)
+    joins = gen_sqlstr_joins(joins)
+    attrs = ', '.join('{join_name} AS {orig_name}'.format(join_name=attr.join_name, orig_name = attr.orig_name) for attr in reln.attributes)
 
-        sql = "SELECT {attrs}, SUM({childmulti}) AS freq FROM {joins} GROUP BY {attrs}"
-        sql = sql.format(attrs=attrs, childmulti=childmulti, joins=joins)
-        create_table(sql, name)
-    elif node.isLeaf():
-        join_relations  =   [get_topjoin_tablename(node)]
+    sql = 'WITH \n' + ', \n'.join('    {name} AS ({view})'.format(view=view, name=name) for view, name in view_queue) + '\n'
+    sql += 'SELECT {attrs}, {freqs} as tsens FROM {joins}'.format(attrs=attrs, freqs=freqs, joins=joins)
 
-        attrs   =   gen_sqlstr_attributes(node.attributes)
-        joins   =   gen_sqlstr_joins(join_relations)
-
-        sql = "SELECT {attrs}, SUM(C_{i}_{pi}) AS freq FROM {joins} GROUP BY {attrs}"
-        sql = sql.format(attrs=attrs, i=node.index, pi=parent.index, joins=joins)
-        create_table(sql, name)
-    else:
-        join_relations  =   [get_topjoin_tablename(node)] + [get_botjoin_tablename(child) for child in children]
-
-        attrs   =   gen_sqlstr_attributes(node.attributes)
-        childmulti  =   gen_sqlstr_childmutli(node)
-        joins   =   gen_sqlstr_joins(join_relations)
-
-        sql = "SELECT {attrs}, SUM(C_{i}_{pi} * {childmulti}) AS freq FROM {joins} GROUP BY {attrs}"
-        sql = sql.format(attrs=attrs, i=node.index, pi=parent.index, childmulti=childmulti, joins=joins)
-        create_table(sql, name)
-
-def _prepare_tuplesens(reln: Relation, node: Node):
     name = get_relnsens_tablename(reln)
 
-    attrs   =   gen_sqlstr_attributes(reln.attributes)
-
-    #subquery = "(SELECT {attrs}, SUM(freq) AS freq FROM {nodefreq} GROUP BY {attrs}) AS {new_name}"
-    #subquery = subquery.format(attrs=attrs, nodefreq=get_nodefreq_tablename(node), new_name=get_grouped_nodefreq_tablename(node, reln))
-    #join_relations  =   [subquery] + [cohort.name for cohort in node.get_cohorts(reln)]
-
-    join_relations  =   [get_nodefreq_tablename(node)] + [cohort.name for cohort in node.get_cohorts(reln)]
-
-    joins   =   gen_sqlstr_joins(join_relations)
-
-    sql = "SELECT {attrs}, SUM(freq) AS tsens FROM {joins} GROUP BY {attrs}"
-    sql = sql.format(attrs=attrs, joins=joins)
     create_table(sql, name)
 
 @deprecated
@@ -209,14 +196,14 @@ def deprecated_select_most_sensitive_tuple(reln: Relation, node: Node):
 class BotjoinING:
     pass
 
-def prepare_dbotjoin(reln: Relation, dnode: DNode, view_queue: List[Tuple[str, str]], ptstar_candidates):
+def _prepare_dbotjoin(reln: Relation, dnode: DNode, view_queue: List[Tuple[str, str]]):
     if dnode.dbotjoin is not None or dnode.dbotjoin |INS| BotjoinING:
         return
 
     dnode.dbotjoin = BotjoinING()
     dprint('dnode: ', dnode, ', children', dnode.children)
     for dchild in dnode.children:
-        prepare_dbotjoin(reln, dchild, view_queue, ptstar_candidates)
+        _prepare_dbotjoin(reln, dchild, view_queue)
 
     dnode.update_project_attrs(reln)
     attrs = dnode.project_attrs
@@ -231,32 +218,40 @@ def prepare_dbotjoin(reln: Relation, dnode: DNode, view_queue: List[Tuple[str, s
         sql = 'SELECT {attrs}, SUM({freqs}) AS C_{i}_{pi} FROM {joins} GROUP BY {attrs}'
         sql = sql.format(attrs=attrs, freqs=freqs, joins=joins, i=dnode.index, pi=dnode.parent.index)
         view_queue.append((sql, name))
-        dnode.dbotjoin = name
+        dnode.dbotjoin = (name, view_queue)
         #dprint(name, dnode.parent, [name for sql, name in view_queue])
-        prepare_dbotjoin(reln, dnode.parent, view_queue, ptstar_candidates)
+        _prepare_dbotjoin(reln, dnode.parent, view_queue)
     else:
         dprint('DNode Attrs: ', dnode.attributes, 'Reln Attrs: ', reln.attributes)
-        if view_queue:
-            sql = 'WITH \n' + ', \n'.join('    {name} AS ({view})'.format(view=view, name=name) for view, name in view_queue) + '\n'
-        else:
-            sql = ''
-        sql = sql + '    SELECT {attrs}, SUM({freqs}) AS ptsens FROM {joins} GROUP BY {attrs} ORDER BY ptsens DESC LIMIT 1'
-        sql = sql.format(attrs=attrs, freqs=freqs, joins=joins)
-        dprint(name)
-        dprint([name for sql, name in view_queue])
-        dprint(' '*4 +  sql)
-        dprint()
-        cur = run_sql(sql)
-        res = cur.fetchone()
-        ptstar_candidate = decompose_ptsens_row(res)
-        ptstar_candidates.append(ptstar_candidate)
-        dnode.dbotjoin = name
+        dnode.dbotjoin = (name, view_queue)
+
+def prepare_dbotjoin(hypertree: Tree):
+    for reln in hypertree.node_map:
+        for dnode in reln.dforest.dnodes:
+            view_queue = []
+            _prepare_dbotjoin(reln, dnode, view_queue)
 
 def learn_ptstar_candidates(reln: Relation):
     ptstar_candidates = []
     for dnode in reln.dforest.dnodes:
-        view_queue = []
-        prepare_dbotjoin(reln, dnode, view_queue, ptstar_candidates)
+        if dnode.isRoot():
+            attrs = dnode.project_attrs
+            attrs = gen_sqlstr_attributes(attrs)
+            joins = [dnode.gen_sqlstr()] + [get_dbotjoin_tablename(dchild) for dchild in dnode.children]
+            joins = gen_sqlstr_joins(joins)
+            freqs = gen_sqlstr_freqmulti(dnode)
+            _, view_queue = dnode.dbotjoin
+            if view_queue:
+                sql = 'WITH \n' + ', \n'.join('    {name} AS ({view})'.format(view=view, name=name) for view, name in view_queue) + '\n'
+            else:
+                sql = ''
+            sql = sql + '    SELECT {attrs}, SUM({freqs}) AS ptsens FROM {joins} GROUP BY {attrs} ORDER BY ptsens DESC LIMIT 1'
+            sql = sql.format(attrs=attrs, freqs=freqs, joins=joins)
+
+            cur = run_sql(sql)
+            res = cur.fetchone()
+            ptstar_candidate = decompose_ptsens_row(res)
+            ptstar_candidates.append(ptstar_candidate)
     return ptstar_candidates
 
 def select_ltstar(reln: Relation, node: Node):
@@ -278,10 +273,6 @@ def prepare_topjoin(hypertree: Tree):
     for node in hypertree.nodes:
         _prepare_topjoin(node)
 
-def prepare_freqtable(hypertree: Tree):
-    for node in hypertree.nodes:
-        _prepare_freqtable(node)
-
 def prepare_node(node: Node):
     name = node.name
     if len(node.relations) == 1:
@@ -300,9 +291,13 @@ def prepare_tree(hypertree: Tree):
     for node in hypertree.nodes:
         prepare_node(node)
 
+def prepare_freqtable(hypertree: Tree):
+    for reln, node in hypertree.node_map.items():
+        _prepare_freqtable(reln)
+
 def prepare_tuplesens(hypertree: Tree):
     for reln, node in hypertree.node_map.items():
-        _prepare_tuplesens(reln, node)
+        _prepare_tuplesens(reln)
 
 def select_most_sensitive_tuple(hypertree: Tree, exclusion: List[str] = []):
     ltstars = []
@@ -476,14 +471,29 @@ def tuple_sens(T: Tree, _conn, exclusion=[]):
     prepare_tree(T)
     prepare_botjoin(T)
     prepare_topjoin(T)
-    #prepare_freqtable(T)
-    #prepare_tuplesens(T)
+    prepare_dbotjoin(T)
     tstar, local_tstar_list = select_most_sensitive_tuple(T, exclusion)
 
     time_finsh = time.time()
     elapsed = time_finsh - time_start
 
     return tstar, local_tstar_list, elapsed
+
+def local_tuple_sens(T: Tree, _conn, exclusion=[]):
+    global conn
+    conn = _conn
+
+    time_start = time.time()
+
+    prepare_tree(T)
+    prepare_botjoin(T)
+    prepare_topjoin(T)
+    prepare_dbotjoin(T)
+    prepare_freqtable(T)
+    prepare_tuplesens(T)
+
+    time_finsh = time.time()
+    elapsed = time_finsh - time_start
 
 def gen_report(algo_name, arch, scale, query, tstar, local_tstar_list, elapsed, test_pass):
     reln, tupl, sens = tstar.asTuple()

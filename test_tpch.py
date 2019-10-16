@@ -1,7 +1,9 @@
 #!/usr/bin/python3
 
-from run import run_TSens, run_Elastic
+from run import run_TSens, run_Elastic, run_LTSens
 from algo import gen_report_title
+from objects import Relation
+from dp import DP_TSens
 
 arch = 'tpch'
 
@@ -44,6 +46,25 @@ def test_q3_elastic():
     scale = '0.01'
     run_Elastic(arch, scale, q='q3')
 
+def test_q1_LTSens():
+    scale = '1'
+    run_LTSens(arch, scale, q='q1')
+
+def test_q2_LTSens():
+    scale = '0.01'
+    run_LTSens(arch, scale, q='q1')
+
+def testDP_q1_TSens():
+    scale = '1'
+    eps = 1.0
+    reln = Relation('any', 'CUSTOMER', {})
+    nosy_ans, gsens, bias_ans, true_ans = DP_TSens(arch, scale, reln, eps)
+    print('Noisy Ans', nosy_ans)
+    print('Global Sens:', gsens)
+    print('Bias  Ans', bias_ans)
+    print('True  Ans:', true_ans)
+
+
 def gen_report():
     report=True
     gen_report_title()
@@ -84,7 +105,9 @@ if __name__ == '__main__':
     #test_q1()
     #test_q2()
     #test_q3()
+    test_q1_LTSens()
+    testDP_q1_TSens()
     #test_full()
 
     #gen_report()
-    run_missing()
+    #run_missing()

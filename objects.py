@@ -34,8 +34,7 @@ class Relation:
         self.size = None
 
     def rename(self):
-        new_attrs = ','.join('%s AS %s'%(attr.orig_name, attr.join_name) for attr in self.attributes)
-        new_reln  = '(SELECT {new_attrs} FROM {reln}) AS {reln}'.format(new_attrs=new_attrs, reln=self.name)
+        new_reln = '({rename_attributes}) AS {reln}'.format(rename_attributes=self.rename_attributes(), reln=self.name)
         return new_reln
 
     def rename_attributes(self):
