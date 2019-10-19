@@ -33,6 +33,9 @@ class Relation:
         self.sens = None
         self.size = None
 
+        self.foreignkey_sources = []
+        self.primarykey_targets = []
+
     def rename(self):
         new_reln = '({rename_attributes}) AS {reln}'.format(rename_attributes=self.rename_attributes(), reln=self.name)
         return new_reln
@@ -47,11 +50,22 @@ class Relation:
         new_reln  = '(SELECT {new_attrs}, 1 as C_{i} FROM {reln}) AS {reln}'.format(new_attrs=new_attrs, i=self.index, reln=self.name)
         return new_reln
 
+    def __eq__(self, other):
+        return other and self.name == other.name
+
+    def __hash__(self):
+        return hash(self.name)
+
     def __str__(self):
         return self.name
 
     def __repr__(self):
         return self.__str__()
+
+class Schema:
+    def __init__(self, name, relations):
+        self.name = name
+        self.relations = relations
 
 class Node:
     def __init__(self, index, name, relations: List[Relation]):

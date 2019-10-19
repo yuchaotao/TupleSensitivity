@@ -53,6 +53,20 @@ def elastic_sens(hypertree: Tree, _conn):
             elasticsens = nodesens.sens
     return TupleSens('any', 'any', elasticsens)
 
+def elastic_sens_w_policy(hypertree: Tree, _conn, init_mf, init_size, init_sens):
+    global conn
+    conn = _conn
+    elasticsens = 0
+    for reln in hypertree.node_map:
+        init_mf(reln)
+        init_size(reln)
+        init_sens(reln)
+    for node in hypertree.nodes:
+        nodesens = calc_botsens(node)
+        if node.isRoot():
+            elasticsens = nodesens.sens
+    return TupleSens('any', 'any', elasticsens)
+
 def calc_botsens(node: Node) -> Relation:
     if node.botsensreln != None:
         return node.botsensreln
@@ -153,6 +167,14 @@ def init_mf(reln):
         res = cur.fetchone()
         attr.mf = res['mf']
         dprint(attr.orig_name, attr.mf)
+
+def init_mf_attr(reln, attr, conn):
+    sql = "SELECT COUNT(*) AS mf FROM {reln} GROUP BY {attr} ORDER BY mf DESC LIMIT 1"
+    sql = sql.format(reln=reln.name, attr=attr.orig_name)
+    cur = run_sql(sql, conn)
+    res = cur.fetchone()
+    attr.mf = res['mf']
+    dprint(attr.orig_name, attr.mf)
 
 def init_size(reln):
     global conn

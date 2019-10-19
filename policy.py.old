@@ -1,0 +1,217 @@
+import max_freq_calc
+from DatabaseObjects import Table, Attribute, ForeignPrimaryRelation
+import QueryRewriter as QR
+import run_postgres
+import re
+
+from collections import defaultdict
+
+
+class Policy:
+    '''
+    Only taking into account the foreign-primary key constraints
+
+    '''
+    def __init__(self, name):
+        '''
+
+        @param name: it indicates the policy name
+        @type policy_dag: defaultdict[Table -> list[ForeignPrimaryRelation]]
+        @param policy_dag: A dictionary. The key is a table,
+                            the value is a list of dependent ForeignPrimaryRelation
+                            of which the foreign table is always equal to the
+                            dictionary key.
+                            For example,
+                            table_A -> [{ft:(table_A, att_X), pt:(table_B, att_Y)]
+        @param attribute_set:   A set of attributes that appear in
+                                any ForeignPrimaryRelation
+
+        '''
+        self.name = name
+        self.policy_dag = defaultdict(list)
+        self.foreign_attribute_set = set()
+        self.primary_attribute_set = set()
+
+    def __getitem__(self, key):
+        return self.policy_dag[key]
+
+    def append(self, fpr):
+        # type (ForeignPrimaryRelation) -> None
+        self.policy_dag[fpr.foreign_table].append(fpr)
+        self.foreign_attribute_set.add(fpr.foreign_attribute)
+        self.primary_attribute_set.add(fpr.primary_attribute)
+
+    def clear(self):
+        # set 0 for all mf and sens
+        for table in self.policy_dag.keys():
+            table.sensitivity = None
+        for attribute in self.foreign_attribute_set | self.primary_attribute_set:
+            attribute.mf = None
+
+    def calc_sens(self, level, eps):
+        '''
+        The self-join rule is included here.
+        The sensitivity of parent tables are simply the sum of parents' sensitivity
+        TODO: We need a restrictive understanding of this sens calculation
+        '''
+        def _calc_sens(table, eps_budget):
+            if len(self.policy_dag[table]) == 0:
+                # primary private table
+                table.sensitivity = 1
+            elif table.sensitivity == None:
+                fpr_list = self.policy_dag[table]
+                parent_sens = sum(map(lambda fpr:_calc_sens(fpr.primary_table, eps_budget), fpr_list))
+                table.sensitivity = 0
+                for fpr in fpr_list:
+                    fpr.foreign_attribute.mf = max_freq_calc.svt_estimate(
+                        level       =   level,
+                        att_name    =   fpr.foreign_attribute.name,
+                        table       =   fpr.foreign_table.name,
+                        eps         =   eps_budget[fpr.foreign_attribute],
+                        base_stab   =   parent_sens,
+                    )
+                    table.sensitivity += fpr.foreign_attribute.mf * _calc_sens(fpr.primary_table, eps_budget)
+            return table.sensitivity
+
+        # Default eps budget allocation for each foreign key
+        eps_budget = dict()
+        N = len(self.foreign_attribute_set)
+        for foreign_attribute in self.foreign_attribute_set:
+            eps_budget[foreign_attribute] = eps*1.0/N
+
+        for table in self.policy_dag.keys():
+            _calc_sens(table, eps_budget)
+
+    def rewrite(self):
+        '''
+        This function should be called after calc_sens, so the mf of each fpr attribute
+        has been updated.
+        '''
+        def _rewrite(table):
+            if table.rewritten is None:
+                fpr_list = self.policy_dag[table]
+                table.rewritten = table.name
+
+                # Only support chain now
+                assert len(fpr_list) <= 1
+
+                if len(fpr_list) == 1:
+                    fpr = fpr_list[0]
+                    trunc_sql = QR.trunc(table.name, fpr.foreign_attribute.name, fpr.foreign_attribute.mf)
+                    semijoin_sql = QR.semijoin(trunc_sql, _rewrite(fpr.primary_table), fpr)
+                    table.rewritten = semijoin_sql
+                    table.rewritten_name = 'new_{R}'.format(R=table.name)
+                else:
+                    table.rewritten = None
+                    table.rewritten_name = table.name
+            return table.rewritten_name
+
+        for table in self.policy_dag.keys():
+            _rewrite(table)
+
+    def create_views(self, dbname):
+        created = set()
+        def _create_view(table):
+            if table in created:
+                return
+            else:
+                if table.rewritten is not None:
+                    for fpr in self.policy_dag[table]:
+                        _create_view(fpr.primary_table)
+                    sql = 'DROP TABLE IF EXISTS new_{R}; \
+                            CREATE TABLE new_{R} AS ({RW});'\
+                            .format(R=table.name, RW=table.rewritten)
+                    run_postgres.execute_query(sql, dbname)
+                created.add(table)
+        for table in self.policy_dag.keys():
+            _create_view(table)
+
+
+    def replace_base_tables(self, query):
+        for table in self.policy_dag.keys():
+            query = re.sub(r'\s({R})(\.|\s|;|,)'.format(R=table.name),\
+                        r' {NR}\2'.format(NR=table.rewritten_name),\
+                        query)
+        return query
+
+def gen_tpc_h_policy():
+    customer = Table('customer')
+    orders = Table('orders')
+    lineitem = Table('lineitem')
+
+    # Foreign Keys
+    o_custkey = Attribute('o_custkey', orders)
+    l_orderkey = Attribute('l_orderkey', lineitem)
+
+    # Primary Keys
+    c_custkey = Attribute('c_custkey', customer)
+    o_orderkey = Attribute('o_orderkey', orders)
+
+    fpr_oc = ForeignPrimaryRelation((orders, o_custkey), (customer, c_custkey))
+    fpr_lo = ForeignPrimaryRelation((lineitem, l_orderkey), (orders, o_orderkey))
+
+    tpc_h_policy = Policy('tpc_h')
+    tpc_h_policy.append(fpr_oc)
+    tpc_h_policy.append(fpr_lo)
+
+    return tpc_h_policy
+
+def gen_households_policy():
+    hh_persons = Table('hh_persons')
+    housing = Table('housing')
+
+    # Foreign Key
+    p_h_id = Attribute('h_id', hh_persons)
+
+    # Primary Key
+    h_h_id = Attribute('h_id', housing)
+
+    fpr_ph = ForeignPrimaryRelation((hh_persons, p_h_id), (housing, h_h_id))
+
+    households_policy = Policy('households')
+    households_policy.append(fpr_ph)
+
+    return households_policy
+
+def gen_policy(privacy_policy):
+    if privacy_policy == 'households':
+        return gen_households_policy()
+    elif privacy_policy == 'tpc_h':
+        return gen_tpc_h_policy()
+    else:
+        return Policy(privacy_policy)
+
+
+def test():
+    tpc_h_policy = gen_tpc_h_policy()
+    tpc_h_policy.calc_sens(level='tpc_h', eps=0.1)
+    tpc_h_policy.rewrite()
+    #tpc_h_policy.create_views(dbname="'tpc_h'")
+
+    print "Table Sensitivity:"
+    for table in tpc_h_policy.policy_dag.keys():
+        print table.name, table.sensitivity
+    print ''
+
+    print "Max Frequency:"
+    for attri in tpc_h_policy.foreign_attribute_set:
+        print attri.name, attri.mf
+    print ''
+
+    print "Rewrite:"
+    for table in tpc_h_policy.policy_dag.keys():
+        print table.name, table.rewritten
+        print ''
+
+if __name__ == '__main__':
+    test()
+    '''
+    True:
+        o_custkey:  41
+        l_orderkey: 7
+
+    Noised Result:
+        o_custkey:  25
+        l_orderkey: 6
+
+    '''

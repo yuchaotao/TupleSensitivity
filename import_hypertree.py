@@ -2,9 +2,9 @@
 
 from copy import deepcopy as copy
 
-from algo import Attribute, Relation, Node, Tree
-from algo import BotNode, TopNode, DNode, DForest
-from algo import dprint
+from objects import Attribute, Relation, Node, Tree
+from objects import BotNode, TopNode, DNode, DForest
+from utils import dprint
 
 def read_hypertree_from_file(hypertree_file):
     relations = {}
