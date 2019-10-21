@@ -1,5 +1,5 @@
-DEBUG = True
-#DEBUG = False
+#DEBUG = True
+DEBUG = False
 
 class Infix:
     def __init__(self, function):

@@ -1,4 +1,5 @@
 from objects import Relation, Attribute, Schema
+from utils import dprint
 
 def read_schema_from_file(name, schema_file):
     relations = {}
@@ -11,7 +12,7 @@ def read_schema_from_file(name, schema_file):
             index   = info[1]
             name    = info[2]
             relation = Relation(index, name, set())
-            relation.attributes = {}
+            relation.attributes = dict()
             relations[index] = relation
         elif flag == 'a':
             index = info[1]
@@ -23,9 +24,11 @@ def read_schema_from_file(name, schema_file):
             parent = relations[info[1]]
             child  = relations[info[2]]
             indices = info[3:]
-            parent.primarykey_targets.append((paraent.attributes[i], child) for i in indices)
-            child.foreignkey_sources.append((child.attributes[i], parent) for i in indices)
-    for reln in relations:
-        reln.attribtues = reln.attributes.values()
-    schema = Schema(name, relations.values())
+            parent.primarykey_targets.append([(parent.attributes[i], child) for i in indices])
+            child.foreignkey_sources.append([(child.attributes[i], parent) for i in indices])
+    for reln in relations.values():
+        reln.attributes = list(reln.attributes.values())
+        #dprint(reln, 'primarykey_targets:', reln.primarykey_targets)
+        #dprint(reln, 'foreignkey_sources:', reln.foreignkey_sources)
+    schema = Schema(name, list(relations.values()))
     return schema

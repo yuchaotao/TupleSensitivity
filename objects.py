@@ -11,6 +11,7 @@ class Attribute:
         self.orig_name = orig_name
 
         self.mf = None
+        self.actual_mf = None
 
     def __eq__(self, other):
         return other and self.join_name == other.join_name
@@ -105,10 +106,12 @@ class Node:
     __repr__ = __str__
 
 class Tree:
-    def __init__(self, nodes: List[Node]):
+    def __init__(self, name, nodes: List[Node]):
         self.nodes = nodes
         self.node_map = {}
         self.demap_nodes(nodes)
+
+        self.name = name
 
     def demap_nodes(self, nodes):
         for node in nodes:
@@ -126,6 +129,21 @@ class TupleSens:
 
     def asTuple(self):
         return (self.reln, self.attr, self.sens)
+
+    def __str__(self):
+        return str(self.asTuple())
+
+    __repr__ = __str__
+
+class ElasticTupleSens:
+    def __init__(self, reln, attr, e_sens, t_sens):
+        self.reln = reln
+        self.attr = attr
+        self.e_sens = e_sens
+        self.t_sens = t_sens
+
+    def asTuple(self):
+        return (self.reln, self.attr, self.e_sens, self.t_sens)
 
     def __str__(self):
         return str(self.asTuple())

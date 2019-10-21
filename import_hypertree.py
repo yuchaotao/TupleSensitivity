@@ -6,7 +6,7 @@ from objects import Attribute, Relation, Node, Tree
 from objects import BotNode, TopNode, DNode, DForest
 from utils import dprint
 
-def read_hypertree_from_file(hypertree_file):
+def read_hypertree_from_file(hypertree_name, hypertree_file):
     relations = {}
     nodes = {}
     for line in open(hypertree_file, 'r').readlines():
@@ -53,7 +53,7 @@ def read_hypertree_from_file(hypertree_file):
             child.parent = parent
     relations = relations.values()
     nodes = nodes.values()
-    T = Tree(nodes)
+    T = Tree(hypertree_name, nodes)
     return T, nodes, relations
 
 def dnode_parser(info, relations, nodes):

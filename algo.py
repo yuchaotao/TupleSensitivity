@@ -26,15 +26,26 @@ IDN = psycopg2.sql.Identifier
 RECREATE_TABLE = True
 #RECREATE_TABLE = False
 
-
-def _prepare_botjoin(node: Node):
+def _prepare_botjoin(node: Node, calc_root=False):
     if node.botjoin is not None:
         return node
 
     name    =   get_botjoin_tablename(node)
 
     if node.isRoot():
-        pass
+        if calc_root:
+            for child in node.children:
+                _prepare_botjoin(child)
+
+            childmulti  =   gen_sqlstr_childmutli(node)
+            join_relations = [node.name] + [get_botjoin_tablename(child) for child in node.children]
+            joins   =   gen_sqlstr_joins(join_relations)
+
+            sql = "SELECT SUM({childmulti}) AS total_cnt FROM {joins}"
+            sql = sql.format(childmulti=childmulti, joins=joins)
+            create_table(sql, name)
+        else:
+            pass
     elif node.isLeaf():
         parent  =   node.parent
 
@@ -265,9 +276,9 @@ def dummy_ltstar(reln: Relation):
     ltstar = TupleSens(reln, [], 1)
     return ltstar
 
-def prepare_botjoin(hypertree: Tree):
+def prepare_botjoin(hypertree: Tree, calc_root=False):
     for node in hypertree.nodes:
-        _prepare_botjoin(node)
+        _prepare_botjoin(node, calc_root)
 
 def prepare_topjoin(hypertree: Tree):
     for node in hypertree.nodes:
@@ -295,8 +306,10 @@ def prepare_freqtable(hypertree: Tree):
     for reln, node in hypertree.node_map.items():
         _prepare_freqtable(reln)
 
-def prepare_tuplesens(hypertree: Tree):
+def prepare_tuplesens(hypertree: Tree, exclusion):
     for reln, node in hypertree.node_map.items():
+        if reln.name in exclusion:
+            continue
         _prepare_tuplesens(reln)
 
 def select_most_sensitive_tuple(hypertree: Tree, exclusion: List[str] = []):
@@ -395,10 +408,10 @@ def create_view(sql, name):
     run_sql_silent(sml)
 
 def drop_table_or_view(name):
-    sml = "DROP TABLE IF EXISTS {name};"
+    sml = "DROP TABLE IF EXISTS {name};".format(name=name)
     run_sql_silent(sml)
-    sml = "DROP VIEW IF EXISTS {name};"
-    run_sql_silent(sml)
+    sml = "DROP VIEW IF EXISTS {name};".format(name=name)
+    run_sql(sml)
 
 def run_sql(sql):
     global conn
@@ -408,7 +421,10 @@ def run_sql_silent(sql):
     global conn
     return db.run_sql_silent(sql, conn)
 
-def ground_truth(relations: List[Relation], reln, tupl):
+def ground_truth(relations: List[Relation], reln, tupl, _conn=None):
+    global conn
+    if _conn:
+        conn = _conn
     sql = SQL('(SELECT {0}) AS {1}').format(
             SQL(', ').join(
                 SQL('{0} AS {1}').format(
@@ -429,6 +445,38 @@ def ground_truth(relations: List[Relation], reln, tupl):
     res = int(res[0])
     dprint('[GROUND TRUTH]', 'SENS: ', res)
     return res
+
+def ground_query_count(relations, _conn=None):
+    global conn
+    if _conn:
+        conn = _conn
+
+    join_relations = [reln.rename() for reln in relations]
+    joins   =   gen_sqlstr_joins(join_relations)
+
+    sql = "SELECT COUNT(*) AS cnt FROM {joins}"
+    sql = sql.format(joins=joins)
+    cnt = int((run_sql(sql).fetchone())[0])
+
+    dprint('[GROUND QUERY TRUTH]', 'SQL: ', sql)
+    dprint('[GROUND QUERY TRUTH]', 'CNT: ', cnt)
+
+    return cnt
+
+class QueryCntError(Exception):
+    pass
+
+@timeout(3)
+def test_query_ground(relations, my_cnt):
+    try:
+        true_cnt = ground_query_count(relations)
+        assert(true_cnt == my_cnt)
+    except TimeoutError:
+        raise TimeoutError
+    except AssertionError:
+        dprint(true_cnt)
+        dprint(my_cnt)
+        raise QueryCntError('My Cnt: %d'%my_cnt, 'True Cnt: %d'%true_cnt)
 
 class TStarError(Exception):
     pass
@@ -490,25 +538,60 @@ def local_tuple_sens(T: Tree, _conn, exclusion=[]):
     prepare_topjoin(T)
     prepare_dbotjoin(T)
     prepare_freqtable(T)
-    prepare_tuplesens(T)
+    prepare_tuplesens(T, exclusion)
 
     time_finsh = time.time()
     elapsed = time_finsh - time_start
 
-def gen_report(algo_name, arch, scale, query, tstar, local_tstar_list, elapsed, test_pass):
+    return elapsed
+
+def evaluate_query(T: Tree, _conn):
+    global conn
+    conn = _conn
+
+    time_start = time.time()
+    dprint(time_start)
+    prepare_tree(T)
+    prepare_botjoin(T, calc_root=True)
+
+    for node in T.nodes:
+        if node.isRoot():
+            sql = 'SELECT total_cnt from {name}'.format(name=get_botjoin_tablename(node))
+            cur = run_sql(sql)
+            res = cur.fetchone()['total_cnt']
+    total_cnt = res if res else 0
+
+    time_finsh = time.time()
+    dprint(time_finsh)
+    elapsed = time_finsh - time_start
+
+    return total_cnt, elapsed
+
+def gen_report(algo_name, arch, scale, query, tstar, local_tstar_list, avg_time, time_list, test_pass):
     reln, tupl, sens = tstar.asTuple()
-    elapsed = '%.3f'%elapsed
-    print(algo_name, arch, scale, query, elapsed, reln, tupl, sens, local_tstar_list, test_pass, sep=' | ')
+    elapsed = '%.3f'%avg_time
+    print(algo_name, arch, scale, query, elapsed, reln, tupl, sens, local_tstar_list, time_list, test_pass, sep=' | ')
 
 def gen_report_title():
-    print('algo', 'arch', 'scale', 'query', 'time', 'relation', 'tuple', 'sensitivity', 'all_table_tstar' ,'test pass', sep=' | ')
+    print('algo', 'arch', 'scale', 'query', 'time', 'relation', 'tuple', 'sensitivity', 'all_table_tstar', 'time_list' ,'test pass', sep=' | ')
+
+def gen_query_report(arch, scale, query, total_cnt, avg_time, time_list, test_pass):
+    avg_time = '%.3f'%avg_time
+    print(arch, scale, query, total_cnt, avg_time, time_list, test_pass, sep=' | ')
+
+def gen_query_report_title():
+    print('arch', 'scale', 'query', 'toal_cnt', 'avg_time', 'time_list', 'test_pass', sep=' | ')
 
 def print_tuplesens(tsens):
-    reln, tupl, sens = tsens.asTuple()
+    if tsens:
+        reln, tupl, sens = tsens.asTuple()
+    else:
+        reln, tupl, sens = None, None, None
     print('- Relation: ', reln)
     print('- Tuple: ', tupl)
     print('- sensitivity: ', sens)
     print()
+
 
 def print_humanreadable_report(algo_name, arch, scale, query, tstar, local_tstar_list, elapsed, test_pass):
     print('algorithm:', algo_name)
