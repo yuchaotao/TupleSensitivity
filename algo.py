@@ -256,6 +256,7 @@ def learn_ptstar_candidates(reln: Relation):
                 sql = 'WITH \n' + ', \n'.join('    {name} AS ({view})'.format(view=view, name=name) for view, name in view_queue) + '\n'
             else:
                 sql = ''
+            count_sql = sql + '    SELECT COUNT(*) FROM {joins}'.format(joins=joins)
             sql = sql + '    SELECT {attrs}, SUM({freqs}) AS ptsens FROM {joins} GROUP BY {attrs} ORDER BY ptsens DESC LIMIT 1'
             sql = sql.format(attrs=attrs, freqs=freqs, joins=joins)
 
@@ -263,6 +264,10 @@ def learn_ptstar_candidates(reln: Relation):
             res = cur.fetchone()
             ptstar_candidate = decompose_ptsens_row(res)
             ptstar_candidates.append(ptstar_candidate)
+
+            cur = run_sql(count_sql)
+            res = cur.fetchone()
+            dprint(reln.name, 'freq-table count', res)
     return ptstar_candidates
 
 def select_ltstar(reln: Relation, node: Node):
@@ -415,6 +420,7 @@ def drop_table_or_view(name):
 
 def run_sql(sql):
     global conn
+    dprint(sql)
     return db.run_sql(sql, conn)
 
 def run_sql_silent(sql):
@@ -593,11 +599,11 @@ def print_tuplesens(tsens):
     print()
 
 
-def print_humanreadable_report(algo_name, arch, scale, query, tstar, local_tstar_list, elapsed, test_pass):
+def print_humanreadable_report(algo_name, arch, scale, query, tstar, local_tstar_list, avg_time, time_list, test_pass):
     print('algorithm:', algo_name)
     print('arch-%s-scale-%s'%(arch, scale))
     print('query: ', query)
-    print('Time Elapsed: %.3f'%(elapsed))
+    print('Time Elapsed: %.3f'%(avg_time))
     print('-'*20)
     print("The most sensitive tuple is")
     print_tuplesens(tstar)
