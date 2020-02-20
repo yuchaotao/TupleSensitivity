@@ -303,7 +303,9 @@ def prepare_node(node: Node):
         sql = sql.format(joins=joins)
         create_table(sql, name)
 
-def prepare_tree(hypertree: Tree):
+def prepare_tree(hypertree: Tree, mode='sensitivity'):
+    if len(hypertree.nodes) == 1 and mode == 'sensitivity':
+        return
     for node in hypertree.nodes:
         prepare_node(node)
 
@@ -551,13 +553,68 @@ def local_tuple_sens(T: Tree, _conn, exclusion=[]):
 
     return elapsed
 
+def update_domain(relations, _conn):
+    import pandas as pd
+    for relation in relations:
+        for attribute in relation.attributes:
+            sql = 'select distinct {attr} as active from {reln}'.format(reln=relation.name, attr=attribute.orig_name)
+            active = set(pd.read_sql(sql, _conn)['active'].to_list())
+            sql = 'select MAX(freq) as mf FROM (select count(*) as freq from {reln} group by {attr}) as temp'.format(reln=relation.name, attr=attribute.orig_name)
+            cur = run_sql(sql)
+            mf = cur.fetchone()['mf']
+
+            attribute.mf = mf
+            attribute.active_domain = active
+
+    for relation_1 in relations:
+        for attribute_1 in relation_1.attributes:
+            repr_domain = None
+            for relation_2 in relations:
+                if relation_2 == relation_1:
+                    continue
+                for attribute_2 in relation_2.attributes:
+                    if attribute_2 == attribute_1:
+                        if repr_domain is None:
+                            repr_domain = attribute_2.active_domain
+                        else:
+                            repr_domain &= attribute_2.active_domain
+            if repr_domain is None:
+                repr_domain = set()
+            attribute_1.repr_domain = repr_domain
+
+def calc_table_meta(relations, _conn):
+    global conn
+    conn = _conn
+
+    update_domain(relations, _conn)
+
+    table_dict = dict()
+    td = table_dict
+    for relation in relations:
+        sql = 'SELECT count(*) as cnt FROM {reln}'.format(reln=relation.name)
+        cur = run_sql(sql)
+        cnt = cur.fetchone()['cnt']
+        td[relation.name] = {'cnt': cnt, 'attributes': dict(), 'repr': 1}
+        table = td[relation.name]
+        for attribute in relation.attributes:
+            table['attributes'][attribute.join_name] = {
+                    'active':   len(attribute.active_domain),
+                    'repr':     len(attribute.repr_domain),
+                    'mf':       attribute.mf}
+            table['repr'] *= table['attributes'][attribute.join_name]['repr']
+
+    total_input = sum([tbl['cnt'] for tbl in table_dict.values()])
+    total_repr = sum([tbl['repr'] for tbl in table_dict.values()])
+
+    return table_dict, total_input, total_repr
+
 def evaluate_query(T: Tree, _conn):
     global conn
     conn = _conn
 
     time_start = time.time()
     dprint(time_start)
-    prepare_tree(T)
+    prepare_tree(T, mode='evaluation')
     prepare_botjoin(T, calc_root=True)
 
     for node in T.nodes:
@@ -565,13 +622,14 @@ def evaluate_query(T: Tree, _conn):
             sql = 'SELECT total_cnt from {name}'.format(name=get_botjoin_tablename(node))
             cur = run_sql(sql)
             res = cur.fetchone()['total_cnt']
-    total_cnt = res if res else 0
+    total_output = res if res else 0
 
     time_finsh = time.time()
     dprint(time_finsh)
     elapsed = time_finsh - time_start
 
-    return total_cnt, elapsed
+    return total_output, elapsed
+
 
 def gen_report(algo_name, arch, scale, query, tstar, local_tstar_list, avg_time, time_list, test_pass):
     reln, tupl, sens = tstar.asTuple()
@@ -581,12 +639,12 @@ def gen_report(algo_name, arch, scale, query, tstar, local_tstar_list, avg_time,
 def gen_report_title():
     print('algo', 'arch', 'scale', 'query', 'time', 'relation', 'tuple', 'sensitivity', 'all_table_tstar', 'time_list' ,'test pass', sep=' | ')
 
-def gen_query_report(arch, scale, query, total_cnt, avg_time, time_list, test_pass):
+def gen_query_report(arch, scale, query, total_output, total_input, total_repr, table_dict, avg_time, time_list, test_pass):
     avg_time = '%.3f'%avg_time
-    print(arch, scale, query, total_cnt, avg_time, time_list, test_pass, sep=' | ')
+    print(arch, scale, query, total_output, total_input, total_repr, table_dict, avg_time, time_list, test_pass, sep=' | ')
 
 def gen_query_report_title():
-    print('arch', 'scale', 'query', 'toal_cnt', 'avg_time', 'time_list', 'test_pass', sep=' | ')
+    print('arch', 'scale', 'query', 'total_output', 'total_input', 'total_repr', 'table_dict', 'avg_time', 'time_list', 'test_pass', sep=' | ')
 
 def print_tuplesens(tsens):
     if tsens:

@@ -135,7 +135,7 @@ def calc_joinsens(relnA: Relation, relnB: Relation) -> Relation:
     debug_info += '  |-- New Size: {new_size} \n'
     debug_info += '  |-- New Sens: {new_sens} \n'
     debug_info = debug_info.format(relnA=relnA, relnB=relnB, attrs=join_attrs, sensA=sensA, sensB=sensB, mfA=mfA, mfB=mfB, sizeA=sizeA, sizeB=sizeB, attrsA=attrsA, attrsB=attrsB, new_sens=new_sens, new_attrs={'%s(%d)'%(attr, attr.mf) for attr in new_attrs}, new_size=new_size)
-    #dprint(debug_info)
+    dprint(debug_info)
 
     return tmp_reln
 

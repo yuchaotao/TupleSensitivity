@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from functools import reduce
+import time
 
 from utils import Infix, dprint, INS
 from db import use_db, run_sql
@@ -64,6 +65,8 @@ def truncate_TSens(tsenses, max_tsens):
     return np.sum(tsenses[tsenses <= max_tsens])
 
 def DP_TSens(arch, scale, reln, tsens_limit, eps=1.0):
+    time_start = time.time()
+    
     pre_eps = eps |DIV| 2
     run_eps = eps - pre_eps
 
@@ -74,7 +77,11 @@ def DP_TSens(arch, scale, reln, tsens_limit, eps=1.0):
     bias_ans = truncate_TSens(tsenses, max_tsens)
     noise = Lap(max_tsens |DIV| run_eps)
     nosy_ans = bias_ans + noise
-    return nosy_ans, gsens, bias_ans, true_ans, eps, pre_eps, run_eps
+    
+    time_finsh = time.time()
+    elapsed = time_finsh - time_start
+    
+    return nosy_ans, gsens, bias_ans, true_ans, eps, pre_eps, run_eps, elapsed
 
 def next_T():
     while True:
@@ -245,6 +252,8 @@ def natural_join(relations, flag = 'bias'):
     return df
 
 def DP_PrivateSQL(arch, scale, hypertree: Tree, primary_private_reln, limit, schema, eps=1.0):
+    time_start = time.time()
+    
     pre_eps = eps |DIV| 2
     run_eps = eps - pre_eps
 
@@ -259,31 +268,39 @@ def DP_PrivateSQL(arch, scale, hypertree: Tree, primary_private_reln, limit, sch
     bias_ans = sum(natural_join(relations, 'bias')['freq'])
     true_ans = sum(natural_join(relations, 'true')['freq'])
     nosy_ans = bias_ans + Lap(esens |DIV| run_eps)
+    
+    time_finsh = time.time()
+    elapsed = time_finsh - time_start
 
     dprint('[ESens]', esens)
     dprint('[Bias Ans]', bias_ans)
     dprint('[Nosy Ans]', nosy_ans)
     dprint('[True Ans]', true_ans)
 
-    return nosy_ans, esens, bias_ans, true_ans, eps, pre_eps, run_eps
+    return nosy_ans, esens, bias_ans, true_ans, eps, pre_eps, run_eps, elapsed
 
 def retrieve(array, item):
     return array[array.index(item)]
 
-def print_humanreadable_report(algo_name, arch, scale, q, reln, limit, reps, eps, pre_eps, run_eps, nosy_ans, gsens, bias_ans, true_ans, nosy_ans_list, bias_ans_list, gsens_list):
+def print_humanreadable_report(algo_name, arch, scale, q, reln, limit, reps, eps, pre_eps, run_eps, nosy_ans, gsens, bias_ans, true_ans, nosy_ans_list, bias_ans_list, gsens_list, avg_time, time_list):
+    mean_rel_error = np.mean(np.absolute((np.array(nosy_ans_list) - true_ans)/true_ans))
+    mean_rel_bias = np.mean(np.absolute((np.array(bias_ans_list) - true_ans)/true_ans))
     print('arch: {arch}, scale: {scale}, query: {q}'.format(arch=arch, scale=scale, q=q))
     print('algo_name: {algo_name}, reps: {reps}'.format(algo_name=algo_name, reps=reps))
-    print('pprivate reln: {reln}, eps: {eps}'.format(reln=reln, eps=eps))
+    print('avg_time: %.3f'%avg_time)
+    print('private reln: {reln}, eps: {eps}'.format(reln=reln, eps=eps))
     print('nosy_ans: %.3f, gsens: %d, bias_ans: %d, true_ans: %d'%(nosy_ans, gsens, bias_ans, true_ans))
+    print('mean relative error: %.3f'%mean_rel_error)
+    print('mean relative bias: %.3f'%mean_rel_bias)
     print('eps: %.3f, pre_eps: %.3f, run_eps: %.3f'%(eps, pre_eps, run_eps))
     print('nosy_ans_list:', nosy_ans_list)
     print('bias_ans_list:', bias_ans_list)
     print('gsens_list:', gsens_list)
 
-def gen_report(algo_name, arch, scale, q, reln, limit, reps, eps, pre_eps, run_eps, nosy_ans, gsens, bias_ans, true_ans, nosy_ans_list, bias_ans_list, gsens_list):
-    print(algo_name, arch, scale, q, reln, limit, reps, eps, pre_eps, run_eps, nosy_ans, gsens, bias_ans, true_ans, nosy_ans_list, bias_ans_list, gsens_list, sep=' | ')
+def gen_report(algo_name, arch, scale, q, reln, limit, reps, eps, pre_eps, run_eps, nosy_ans, gsens, bias_ans, true_ans, nosy_ans_list, bias_ans_list, gsens_list, avg_time, time_list):
+    print(algo_name, arch, scale, q, reln, limit, reps, eps, pre_eps, run_eps, nosy_ans, gsens, bias_ans, true_ans, nosy_ans_list, bias_ans_list, gsens_list, avg_time, time_list, sep=' | ')
 
 def gen_report_title():
-    print('algo_name', 'arch', 'scale', 'q', 'reln', 'limit', 'reps', 'eps', 'pre_eps', 'run_eps', 'nosy_ans', 'gsens', 'bias_ans', 'true_ans', 'nosy_ans_list', 'bias_ans_list', 'gsens_list', sep=' | ')
+    print('algo', 'arch', 'scale', 'query', 'reln', 'limit', 'reps', 'eps', 'pre_eps', 'run_eps', 'nosy_ans', 'gsens', 'bias_ans', 'true_ans', 'nosy_ans_list', 'bias_ans_list', 'gsens_list', 'avg_time', 'time_list', sep=' | ')
 
 

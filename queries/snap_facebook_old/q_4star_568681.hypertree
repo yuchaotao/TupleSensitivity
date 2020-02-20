@@ -1,0 +1,62 @@
+c q_4star_348_circle1_circle13_circle8_circle11_1369
+c This is a hypertree for q_4star_568681 (from snap_facebook)
+c
+c Genral format: FLAG INDEX NAME OTHER
+c Flag meaning:
+c 'c': comment
+c 'r': relation
+c 'a': attribute
+c 'n': node
+c 'e': edge (directed)
+c 'd': start defining double tree. 'd <relation index> [double nodes]'
+c 'de': double edges.
+c 'dn': double nodes. the index list after the name is its nodes/relations
+c       Each vertex name is made from a character and a number.
+c       For instance:    'c1' means cohort relation 1,
+c                        'b2' means botjoin node 2,
+c                        't3' means topjoin node 3.
+c For each node, the index list after the node name is its relations
+c For each edge, the first node index is parent, the second is its child
+c For each attribute, we project the second name to the first name
+c
+r 1 source_348_circle_circle1
+a 1 A fnode
+a 2 B tnode
+c
+r 2 source_348_circle_circle13
+a 2 B fnode
+a 3 C tnode
+c
+r 3 source_348_circle_circle8
+a 3 C fnode
+a 1 A tnode
+c
+r 4 tri_source_348_circle_circle11
+a 1 A node1
+a 2 B node2
+a 3 C node3
+c
+n 1 q_4star_568681_node_1 1
+n 2 q_4star_568681_node_2 2
+n 3 q_4star_568681_node_3 3
+n 4 q_4star_568681_node_4 4
+e 4 1
+e 4 2
+e 4 3
+c
+d 1
+dn t1 q_4star_568681_dnode_t1 t1
+c
+d 2
+dn t2 q_4star_568681_dnode_t2 t2
+c
+d 3
+dn t3 q_4star_568681_dnode_t3 t3
+c
+d 4
+dn b1 q_4star_568681_dnode_b1 b1
+dn b2 q_4star_568681_dnode_b2 b2
+dn b3 q_4star_568681_dnode_b3 b3
+de b1 b2
+de b2 b3
+c

@@ -156,7 +156,7 @@ def gen_DP_report():
     report = 'file'
     scale = '0.01'
     eps = 1.0
-    reps = 10
+    reps = 20
     limits = {'q1': 100, 'q2': 500, 'q3': 10}
     relns = {
             'q1': Relation('any', 'CUSTOMER', {}),
@@ -168,7 +168,7 @@ def gen_DP_report():
     for q in ['q1', 'q2', 'q3']:
         limit = limits[q]
         reln = relns[q]
-        run_LTSens(arch, scale, q=q, exclusion=exclusion, report=None, reps=1)
+        #run_LTSens(arch, scale, q=q, exclusion=exclusion, report=None, reps=1)
         run_TSensDP(arch, scale, q, reln, limit, eps, report=report, reps=reps)
     for q in ['q1', 'q2', 'q3']:
         reln = relns[q]
@@ -218,7 +218,7 @@ if __name__ == '__main__':
     #run_missing()
     #run_elastic()
 
-    gen_query_report()
+    #gen_query_report()
     #_gen_query_report()
 
-    #gen_DP_report()
+    gen_DP_report()

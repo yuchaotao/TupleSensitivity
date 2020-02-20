@@ -1,0 +1,67 @@
+c This is a hypertree for q1 (from tpc-h)
+c
+c Genral format: FLAG INDEX NAME OTHER
+c Flag meaning:
+c 'c': comment
+c 'r': relation
+c 'a': attribute
+c 'n': node
+c 'e': edge (directed)
+c 'd': start defining double tree. 'd <relation index> [double nodes]'
+c 'de': double edges. 
+c 'dn': double nodes. the index list after the name is its nodes/relations
+c       Each vertex name is made from a character and a number.
+c       For instance:    'c1' means cohort relation 1, 
+c                        'b2' means botjoin node 2, 
+c                        't3' means topjoin node 3.
+c For each node, the index list after the node name is its relations
+c For each edge, the first node index is parent, the second is its child
+c For each attribute, we project the second name to the first name
+c
+r 1 REGION
+a 1 REGIONKEY R_REGIONKEY
+c
+r 2 NATION
+a 2 NATIONKEY N_NATIONKEY
+a 1 REGIONKEY N_REGIONKEY
+c
+r 3 CUSTOMER
+a 5 CUSTKEY C_CUSTKEY
+a 2 NATIONKEY C_NATIONKEY
+c
+r 4 ORDERS
+a 5 CUSTKEY O_CUSTKEY
+a 6 ORDERKEY O_ORDERKEY
+c
+r 5 LINEITEM
+a 6 ORDERKEY L_ORDERKEY
+c
+n 1 q1_node_R 1
+n 2 q1_node_N 2
+n 3 q1_node_C 3
+n 4 q1_node_O 4
+n 5 q1_node_L 5
+c
+e 1 2
+e 2 3
+e 3 4
+e 4 5
+c
+d 1
+dn 1 q1_dnode_bN b2
+c
+d 2
+dn 2 q1_dnode_tN t2
+dn 3 q1_dnode_bC b3
+c
+d 3
+dn 4 q1_dnode_tC t3
+dn 5 q1_dnode_bO b4
+c
+d 4
+dn 6 q1_dnode_tO t4
+dn 7 q1_dnode_bL b5
+c
+d 5
+dn 8 q1_dnode_tL t5
+c

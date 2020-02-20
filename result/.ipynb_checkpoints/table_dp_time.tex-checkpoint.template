@@ -1,0 +1,18 @@
+\begin{table*}[t!]
+%for \Yup
+%\usepackage{stmaryrd}
+%for \square \sqcap
+%\usepackage{mathabx}
+\def\qtri{q_\triangle}
+\def\qpath{q_\sqcap}
+\def\qcycle{q_\square}
+\def\qstar{q_\Yup}
+\def\tsensdp{TSensDP}
+\def\privatesql{PrivateSQL}
+\begin{tabular}{|l|l|l|l|l|l|l|l|l|}
+\hline
+\multirow{2}{*}{setting} & \multicolumn{2}{l|}{$\qtri$} & \multicolumn{2}{l|}{$\qpath$} & \multicolumn{2}{l|}{$\qcycle$} & \multicolumn{2}{l|}{$\qstar$} \\ \cline{2-9} 
+                  & \tsensdp    & \privatesql    & \tsensdp    & \privatesql  & \tsensdp    & \privatesql  & \tsensdp    & \privatesql  \\ \hline
+<filler>\end{tabular}
+\caption{Computation time of 4 query types under 4 query settings for TSensDP and PrivateSQL (in seconds).}
+\end{table*}

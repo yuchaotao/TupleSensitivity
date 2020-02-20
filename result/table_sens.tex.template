@@ -1,0 +1,19 @@
+\begin{table}[t!]
+%for \Yup
+%\usepackage{stmaryrd}
+%for \square \sqcap
+%\usepackage{mathabx}
+\def\qtri{q_\triangle}
+\def\qpath{q_\sqcap}
+\def\qcycle{q_\square}
+\def\qstar{q_\Yup}
+\def\tsens{TSens}
+\def\elastic{Elastic}
+\begin{tabular}{|l|l|l|l|l|l|l|l|l|}
+\hline
+& \multicolumn{2}{c|}{Local Sensitivity} & \multicolumn{3}{c|}{Time (seconds)} \\ \cline{2-6}
+& \tsens & \elastic & \tsens & \elastic & Evaluation \\ \hline
+<filler>\end{tabular}
+\caption{Local sensitivity and time usage of 4 query types for TSens and Elastic. It also reports the query evaluation time for counting the output size.}
+    \vspace{-20pt}
+\end{table}

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import psycopg2 as pg2
-
 from algo import *
 from objects import *
 
@@ -38,7 +37,7 @@ def gen_arch_hw2td3():
     N2.children = [N1, N3]
     N1.children = [N4, N5]
 
-    T = Tree(nodes)
+    T = Tree('T', nodes)
     return T, nodes, relations
 
 def gen_relations():
@@ -123,7 +122,7 @@ def gen_arch_hw2td2():
     N2.children = [N1, N3]
     N3.children = [N4]
 
-    T = Tree(nodes)
+    T = Tree('T', nodes)
     return T, nodes, relations
 
 def gen_arch_hw3td3():

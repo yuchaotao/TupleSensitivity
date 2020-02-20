@@ -12,6 +12,9 @@ class Attribute:
 
         self.mf = None
         self.actual_mf = None
+        
+        self.repr_domain = set()
+        self.active_domain = set()
 
     def __eq__(self, other):
         return other and self.join_name == other.join_name
@@ -36,6 +39,8 @@ class Relation:
 
         self.foreignkey_sources = []
         self.primarykey_targets = []
+        
+        self.repr_domain = set()
 
     def rename(self):
         new_reln = '({rename_attributes}) AS {reln}'.format(rename_attributes=self.rename_attributes(), reln=self.name)
@@ -287,7 +292,7 @@ def gen_sqlstr_padding(sqlstr):
     return " " + sqlstr + " "
 
 def gen_sqlstr_childmutli(node: Node):
-    sql = " * ".join(["C_{i}_{pi}".format(i=child.index, pi=node.index) for child in node.children])
+    sql = " * ".join(['1'] + ["C_{i}_{pi}".format(i=child.index, pi=node.index) for child in node.children])
     #sql = gen_sqlstr_padding(sql)
     return sql
 

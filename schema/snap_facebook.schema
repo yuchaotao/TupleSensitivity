@@ -1,0 +1,76 @@
+c This is a schema file for snap_facebook
+c We don't include specific foreignkey-primarykey pairs here
+c We only track the relationship among relations
+c
+c Denote 'r <i1> <r1>' as a relation with index <i1> and name <r1>
+c Denote 'e <i1> <i2> [a :list]' as a directed edge from r1(primary) to r2(foreign). So r2 is the parent of r1.
+c        a :list is a list of attributes that has the primary-foreign key relation.
+c
+r 1 source_1912_circle_41
+a 1 X fnode
+a 1 Y tnode
+c
+r 2 source_348_circle_11
+a 2 X fnode
+a 2 Y tnode
+c
+r 3 source_686_circle_4
+a 3 X fnode
+a 3 Y tnode
+c
+r 4 source_1912_circle_38
+a 4 X fnode
+a 4 Y tnode
+c
+r 5 source_348_circle_9
+a 5 X fnode
+a 5 Y tnode
+c
+r 6 source_686_circle_13
+a 6 X fnode
+a 6 Y tnode
+c
+r 7 source_348_circle_8
+a 7 X fnode
+a 7 Y tnode
+c
+r 8 source_686_circle_6
+a 8 X fnode
+a 8 Y tnode
+c
+r 9 source_348_circle_2
+a 9 X fnode
+a 9 Y tnode
+c
+r 10 source_686_circle_12
+a 10 X fnode
+a 10 Y tnode
+c
+r 11 source_348_circle_1
+a 11 X fnode
+a 11 Y tnode
+c
+r 12 source_686_circle_0
+a 12 X fnode
+a 12 Y tnode
+c
+r 13 source_1912_circle_11
+a 13 X fnode
+a 13 Y tnode
+c
+r 14 source_348_circle_0
+a 14 X fnode
+a 14 Y tnode
+c
+r 15 source_348_circle_13
+a 15 X fnode
+a 15 Y tnode
+c
+r 16 source_686_circle_9
+a 16 X fnode
+a 16 Y tnode
+c
+r 17 source_686_circle_8
+a 17 X fnode
+a 17 Y tnode
+c

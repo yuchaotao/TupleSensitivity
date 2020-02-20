@@ -1,0 +1,22 @@
+%\begin{table*}[t!]
+%\usepackage{longtable}
+%for \Yup
+%\usepackage{stmaryrd}
+%for \square \sqcap
+%\usepackage{mathabx}
+\def\qtri{q_\triangle}
+\def\qpath{q_\sqcap}
+\def\qcycle{q_\square}
+\def\qstar{q_\Yup}
+\def\tsens{TSens}
+\def\elastic{Elastic}
+%\begin{tabular}{|l|l|l|l|l|l|l|l|l|l|l|l|}
+\begin{longtable}{|l|l|l|l|l|l|l|l|l|l|l|l|}
+\hline
+qtype & setting & $|IN|$ & $|\reprdomain|$ & $|OUT|$ & relations & $|IN|$ & $\reprdomain$ & attr & $\actdomain$ & $\reprdomain$ & mf \\ \hline
+\endhead
+<filler>
+\caption{Query meta stat for queries of 4 settings from 4 types. $\qtri$ is a triangle query, $\qpath$ is a path query of 4 nodes, $\qcycle$ is a 4-cycle query, $\qstar$ is a star query of 4 nodes}
+\end{longtable}
+%\end{tabular}
+%\end{table*}

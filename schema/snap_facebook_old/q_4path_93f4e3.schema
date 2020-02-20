@@ -1,0 +1,24 @@
+c This is a schema file for snap_facebook
+c We don't include specific foreignkey-primarykey pairs here
+c We only track the relationship among relations
+c
+c Denote 'r <i1> <r1>' as a relation with index <i1> and name <r1>
+c Denote 'e <i1> <i2> [a :list]' as a directed edge from r1(primary) to r2(foreign). So r2 is the parent of r1.
+c        a :list is a list of attributes that has the primary-foreign key relation.
+c
+r 1 source_348_circle_circle1
+a 1 A fnode
+a 2 B tnode
+c
+r 2 source_348_circle_circle11
+a 2 B fnode
+a 3 C tnode
+c
+r 3 source_348_circle_circle2
+a 3 C fnode
+a 4 D tnode
+c
+r 4 source_348_circle_circle8
+a 4 D fnode
+a 5 E tnode
+c

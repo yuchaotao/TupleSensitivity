@@ -1,0 +1,52 @@
+c q_triangle_686_circle0_circle13_circle9_1844
+c This is a hypertree for q_triangle_b052f9 (from snap_facebook)
+c
+c Genral format: FLAG INDEX NAME OTHER
+c Flag meaning:
+c 'c': comment
+c 'r': relation
+c 'a': attribute
+c 'n': node
+c 'e': edge (directed)
+c 'd': start defining double tree. 'd <relation index> [double nodes]'
+c 'de': double edges.
+c 'dn': double nodes. the index list after the name is its nodes/relations
+c       Each vertex name is made from a character and a number.
+c       For instance:    'c1' means cohort relation 1,
+c                        'b2' means botjoin node 2,
+c                        't3' means topjoin node 3.
+c For each node, the index list after the node name is its relations
+c For each edge, the first node index is parent, the second is its child
+c For each attribute, we project the second name to the first name
+c
+r 1 source_686_circle_circle0
+a 1 A fnode
+a 2 B tnode
+c
+r 2 source_686_circle_circle13
+a 2 B fnode
+a 3 C tnode
+c
+r 3 source_686_circle_circle9
+a 3 C fnode
+a 1 A tnode
+c
+n 1 q_triangle_b052f9_node_12 1 2
+n 3 q_triangle_b052f9_node_3 3
+c
+e 1 3
+c
+d 1
+dn 2 q_triangle_b052f9_dnode_c2 c2
+dn 3 q_triangle_b052f9_dnode_b3 b3
+de 2 3
+c
+d 2
+dn 1 q_triangle_b052f9_dnode_c1 c1
+dn 3 q_triangle_b052f9_dnode_b3 b3
+de 1 3
+c
+d 3
+dn 4 q_triangle_b052f9_dnode_t3 t3
+c
+c

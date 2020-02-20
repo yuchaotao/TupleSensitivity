@@ -1,0 +1,20 @@
+\begin{table}[t!]
+\small
+%for \Yup
+%\usepackage{stmaryrd}
+%for \square \sqcap
+%\usepackage{mathabx}
+%\usepackage{makecell}
+\def\qtri{q_\triangle}
+\def\qpath{q_\sqcap}
+\def\qcycle{q_\square}
+\def\qstar{q_\Yup}
+\def\tsensdp{TSensDP}
+\def\privatesql{PrivateSQL}
+\begin{tabular}{|l|l|l|l|l|l|l|l|l|}
+\hline
+ Query & $|Q(D)|$ & Algorithm & \multicolumn{1}{c|}{Error} & \multicolumn{1}{c|}{Bias} & \multicolumn{1}{c|}{\makecell{Global \\ Sensitivity}} & \multicolumn{1}{c|}{Time}\\ \hline
+<filler>\end{tabular}
+\caption{Application to Differential Privacy: Comparing \TSensDP error to \PrivSQL error. Time is in seconds.}
+    \vspace{-20pt}
+\end{table}

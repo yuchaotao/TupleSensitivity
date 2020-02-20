@@ -1,0 +1,16 @@
+\begin{table*}[t!]
+%for \Yup
+%\usepackage{stmaryrd}
+%for \square \sqcap
+%\usepackage{mathabx}
+\def\qtri{q_\triangle}
+\def\qpath{q_\sqcap}
+\def\qcycle{q_\square}
+\def\qstar{q_\Yup}
+\def\tsensdp{TSensDP}
+\def\privatesql{PrivateSQL}
+\begin{tabular}{|l|l|l|l|l|l|l|l|}
+\hline
+<filler>\end{tabular}
+\caption{Relative error of <qtype> under 4 query settings across different esitmated tuple sensitivity bound $\ell$ for TSensDP. The corresponding local sensitivity is shown for each query.}
+\end{table*}

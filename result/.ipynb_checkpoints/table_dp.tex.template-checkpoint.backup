@@ -1,0 +1,18 @@
+\begin{table}[t!]
+%for \Yup
+%\usepackage{stmaryrd}
+%for \square \sqcap
+%\usepackage{mathabx}
+\def\qtri{q_\triangle}
+\def\qpath{q_\sqcap}
+\def\qcycle{q_\square}
+\def\qstar{q_\Yup}
+\def\tsensdp{TSensDP}
+\def\privatesql{PrivateSQL}
+\begin{tabular}{|l|l|l|l|l|l|l|l|l|}
+\hline
+& \multirow{2}{*}{True Answer} & \multicolumn{2}{c|}{error} & \multicolumn{2}{c|}{bias} & \multicolumn{2}{c|}{GS} & \multicolumn{2}{c|}{Time (seconds)}\\ \cline{2-6}
+& & \tsensdp & \privatesql & \tsensdp & \privatesql & \tsensdp & \privatesql & \tsensdp & \privatesql  \\ \hline
+<filler>\end{tabular}
+\caption{Application to Differential Privacy: Comparing \TSensDP error to \PrivSQL error. $\qtri$ is a triangle query, $\qpath$ is a path query of 4 nodes, $\qcycle$ is a 4-cycle query, $\qstar$ is a star query of 4 nodes. It also reports the query evaluation time for counting the output size.}
+\end{table}

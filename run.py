@@ -12,7 +12,7 @@ from algo import print_tuplesens, gen_report, print_humanreadable_report
 from algo import gen_query_report
 from algo import tuple_sens
 from algo import local_tuple_sens
-from algo import evaluate_query
+from algo import evaluate_query, calc_table_meta
 from algo import test_ground, test_query_ground, ground_truth
 from elastic import elastic_sens, elastic_sens_ltstars
 from objects import ElasticTupleSens
@@ -20,7 +20,7 @@ from dp import DP_PrivateSQL, DP_TSens
 import dp
 
 qfile_format = 'queries/{arch}/{q}.hypertree'
-schema_file_format = 'schema/{arch}.schema'
+schema_file_format = 'schema/{arch}/{q}.schema'
 
 def test_correctness(algo_name, relations, ltstars_or_total_cnt):
     try:
@@ -66,8 +66,9 @@ def run(algo_name, arch, scale, q,  exclusion=[], report='print', reps=10):
         elif algo_name == 'LTSens':
             elapsed = local_tuple_sens(T, conn, exclusion)
         elif algo_name == 'Query':
-            total_cnt, elapsed = evaluate_query(T, conn)
+            total_output, elapsed = evaluate_query(T, conn)
             if r == 0:
+                table_dict, total_input, total_repr = calc_table_meta(relations, conn)
                 test_pass = 'Unknown'
                 #test_pass = test_correctness(algo_name, relations, total_cnt)
             tstar, ltstars = None, []
@@ -81,7 +82,7 @@ def run(algo_name, arch, scale, q,  exclusion=[], report='print', reps=10):
     elif report == 'print':
         print_humanreadable_report(algo_name, arch, scale, q, tstar, ltstars, avg_time, time_list, test_pass)
     elif report == 'query':
-        gen_query_report(arch, scale, q, total_cnt, avg_time, time_list, test_pass)
+        gen_query_report(arch, scale, q, total_output, total_input, total_repr, table_dict, avg_time, time_list, test_pass)
 
     sys.stdout.flush()
 
@@ -98,33 +99,43 @@ def run_Query(arch, scale, q, exclusion=[], report='query', reps=10):
     run('Query', arch, scale, q, exclusion, report, reps)
 
 
-def run_DP(algo_name, arch, scale, q, reln, limit, eps, report='print', reps=10):
-
+def run_DP(algo_name, arch, scale, q, reln, limit, eps, report='print', reps=10, exclusion=[]):
+    import time
     nosy_ans_list = []
     bias_ans_list = []
     gsens_list = []
+    time_list = []
     for r in range(reps):
+        time_start = time.time()
         if algo_name == 'TSensDP':
-            nosy_ans, gsens, bias_ans, true_ans, eps, pre_eps, run_eps = DP_TSens(arch, scale, reln, limit, eps)
+            run_LTSens(arch, scale, q, exclusion, None, 1)
+            nosy_ans, gsens, bias_ans, true_ans, eps, pre_eps, run_eps, _ = DP_TSens(arch, scale, reln, limit, eps)
         elif algo_name == 'PrivateSQL':
-            schema_file = schema_file_format.format(arch=arch)
+            schema_file = schema_file_format.format(arch=arch, q=q)
             schema = import_schema.read_schema_from_file(arch, schema_file)
             hypertree_file = qfile_format.format(arch=arch, q=q)
             T, nodes, relations = import_hypertree.read_hypertree_from_file(q, hypertree_file)
-            nosy_ans, gsens, bias_ans, true_ans, eps, pre_eps, run_eps = DP_PrivateSQL(arch, scale, T, reln, limit, schema, eps)
+            nosy_ans, gsens, bias_ans, true_ans, eps, pre_eps, run_eps, _ = DP_PrivateSQL(arch, scale, T, reln, limit, schema, eps)
         else:
             raise Exception('Unknown Algorithm')
+
+        time_finsh = time.time()
+        elapsed = time_finsh - time_start
+
         nosy_ans_list.append(nosy_ans)
         bias_ans_list.append(bias_ans)
         gsens_list.append(gsens)
+        time_list.append(elapsed)
 
     nosy_ans = np.mean(nosy_ans_list)
     bias_ans = np.mean(bias_ans_list)
     gsens = np.mean(gsens_list)
+    avg_time = np.mean(time_list)
+
     if report == 'print':
-        dp.print_humanreadable_report(algo_name, arch, scale, q, reln, limit, reps, eps, pre_eps, run_eps, nosy_ans, gsens, bias_ans, true_ans, nosy_ans_list, bias_ans_list, gsens_list)
+        dp.print_humanreadable_report(algo_name, arch, scale, q, reln, limit, reps, eps, pre_eps, run_eps, nosy_ans, gsens, bias_ans, true_ans, nosy_ans_list, bias_ans_list, gsens_list, avg_time, time_list)
     elif report == 'file':
-        dp.gen_report(algo_name, arch, scale, q, reln, limit, reps, eps, pre_eps, run_eps, nosy_ans, gsens, bias_ans, true_ans, nosy_ans_list, bias_ans_list, gsens_list)
+        dp.gen_report(algo_name, arch, scale, q, reln, limit, reps, eps, pre_eps, run_eps, nosy_ans, gsens, bias_ans, true_ans, nosy_ans_list, bias_ans_list, gsens_list, avg_time, time_list)
         pass
 
 def run_TSensDP(arch, scale, q, reln, limit, eps, report='print', reps=10):

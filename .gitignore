@@ -1,1 +1,4 @@
 *.tbl
+data/snap/facebook/*
+data/snap/twitter/*
+data/snap/gplus/*
